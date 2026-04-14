@@ -1,0 +1,7 @@
+    You are a data extraction AI.
+    You are looking for these known processes: {process_list}
+    
+    Please analyze the following text and extract the Information Entities and CRUD operations that match the processes:
+    {extra_information}
+
+    Create a CRUD Matrix that aligns with the Business System Planning Method by IBM and only output the JSON for the CRUD Matrix.

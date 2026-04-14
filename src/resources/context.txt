@@ -1,0 +1,1531 @@
+Alma & Fumo Enterprise Architecture
+EA 2025/2026, DEI, Instituto Superior Técnico, Universidade de Lisboa
+1.	Project UoD 
+ALMA&FUMO (Alma & Fumo – Portuguese Gourmet Restaurant Group) is a gourmet restaurant chain established in Portugal, operating in Lisbon, Porto, and Braga, with a “fine casual” positioning: contemporary Portuguese cuisine, strong emphasis on local DOP/IGP (EU quality labels) products, a curated wine list, and seasonal experiences (tasting menus, chef’s table, and themed events). The company combines in-restaurant service with digital channels (reserva-tions, premium take-away, and B2B catering/corporate events), aiming to grow while preserving a consistent brand identity, culinary quality, and operational excellence.
+
+ALMA&FUMO’s (A&F) main challenge is scaling sustainably: ensuring consistent execution across units (food quality, service timing, staff training, and culture) while managing a demanding supply chain (artisan suppliers, seasonality, traceability, and waste reduction). In parallel, the group faces margin pressure and cost volatility (energy, ingredi-ents, labor), rising customer expectations (personalization, omnichannel journeys, transparency), and the need to modernize processes and systems (reservations, POS, inventory, procurement, HR, BI) to enable faster decision-making and controlled growth.
+We next present information regarding A&F strategy, business, application and technology situation and main chal-lenges. Please note that the information was gathered from different sources, and it is also part of your job to ensure its consistency and relevance.
+1.1 Business Context
+A&F (short for ALMA&FUMO) serves customer segments that value contemporary Portuguese cuisine, premium in-gredients, and a consistent end-to-end experience across physical and digital channels. 
+The main customer segments are:
+ End Consumers (B2C)
+a) Local Premium Diners
+•	Profile: Residents who frequently dine out and seek high-quality modern Portuguese cuisine, wine pairing, and dependable service.
+•	Subsegments:
+o	After-work diners (weekday evenings, convenience + quality)
+o	Weekend social diners (groups/families celebrating casually)
+o	Gastronomy enthusiasts (menu exploration, wine, chef specials)
+•	Main Products:
+o	À la carte contemporary Portuguese dishes
+o	Seasonal chef specials and regional showcases
+o	Premium wine-by-the-glass and curated bottle selection
+•	Related Services:
+o	Online reservation and waitlist management
+o	Loyalty / membership perks (priority booking, tasting invitations)
+o	Wine pairing recommendations (in-person + digital)
+b) Experience-Driven Guests
+•	Profile: Customers looking for memorable dining experiences beyond the meal (storytelling, ambiance, ex-clusivity).
+•	Subsegments:
+o	Celebrations (birthdays, anniversaries, graduations)
+o	Couples and small groups (chef’s table / tasting journey)
+o	Food-and-wine explorers (pairings, regional flights, rare bottles)
+•	Main Products:
+o	Tasting menus (fixed, seasonal, and themed)
+o	Chef’s table / kitchen counter experiences
+o	Signature cocktails and premium pairings
+•	Related Services:
+o	Prepaid experiences and deposits for special menus
+o	Personalization (dietary preferences, special occasions notes)
+o	Gift cards and experience vouchers
+c) Tourists and Short-Stay Visitors
+•	Profile: Visitors wanting an “authentic but elevated” Portuguese dining option, often with limited time and high expectations.
+•	Subsegments:
+o	Cultural tourists (regional ingredients, culinary heritage)
+o	City-break visitors (convenience + strong online reputation)
+o	Luxury travelers (premium service, curated pairings)
+•	Main Products:
+o	“Portuguese essentials” menu (regional staples reinterpreted)
+o	Tasting menu versions designed for time constraints
+o	Wine pairings highlighting Portuguese regions
+•	Related Services:
+o	Multilingual menus and staff support
+o	Concierge / hotel partnerships for reservations
+o	Clear allergen and dietary information
+d) Digital Convenience Customers (Take-away / Delivery Premium)
+•	Profile: Customers seeking restaurant-quality meals at home or at the office, expecting packaging quality and punctuality.
+•	Subsegments:
+o	Busy professionals (weekday lunches/dinners)
+o	Home entertaining (premium group orders)
+o	Health or dietary-focused (clear ingredient control)
+•	Main Products:
+o	Premium take-away menu (signature dishes adapted for transport)
+o	Seasonal boxes (e.g., “Weekend Feast”, “Seafood Night”)
+o	Desserts and curated wine add-ons
+•	Related Services:
+o	Online ordering with pickup time slots
+o	Packaging designed for quality retention and sustainability
+o	Real-time order status and customer support
+
+ Corporate and Institutional Customers (B2B)
+a) Corporate Catering and Events
+•	Profile: Companies organizing executive lunches, client dinners, and internal events.
+•	Subsegments:
+o	Executive dining (VIP meals, private rooms)
+o	Corporate events (brand launches, team celebrations)
+o	Recurring accounts (monthly/quarterly catering contracts)
+•	Main Products:
+o	Event menus (buffet, plated, cocktail format)
+o	Private dining packages (room + menu + wine pairing)
+o	Corporate gift solutions (vouchers, curated boxes)
+•	Related Services:
+o	Dedicated account management and quoting
+o	Contracting, invoicing, and compliance-ready documentation
+o	Event planning support (setup, timing, dietary handling)
+b) Hospitality Partners (Hotels, Concierges, Tour Operators)
+•	Profile: Partners that route guests to A&F as a trusted dining option.
+•	Subsegments:
+o	Hotels/concierge desks (priority booking needs)
+o	Premium tour operators (curated experiences)
+o	Corporate travel agencies (group bookings)
+•	Main Products:
+o	Reserved allocation / priority tables
+o	Set menus for groups and tour schedules
+o	“Portuguese wine discovery” packages
+•	Related Services:
+o	Partner booking portal / dedicated reservation lines
+o	Commission or partnership agreements (where applicable)
+o	Service-level commitments (timing, guest handling)
+
+Community and Lifestyle Stakeholders (B2C/B2B hybrid)
+a) Wine & Gastronomy Communities
+•	Profile: Clubs, associations, and audiences focused on wine, food culture, and premium experiences.
+•	Subsegments:
+o	Wine clubs and collectors
+o	Chef collaborations / guest chef audiences
+o	Food media and influencers
+•	Main Products:
+o	Wine dinners and producer showcases
+o	Collaboration menus and limited editions
+o	Tasting flights and masterclasses
+•	Related Services:
+o	Ticketed events and capacity management
+o	Content and storytelling experiences (pairing notes, provenance)
+o	Community membership benefits
+
+Besides customers, A&F has several other stakeholders, including:
+Investors / Shareholders
+•	Description: Individuals or entities providing capital for expansion, renovations, brand building, and working capital.
+•	Main Drivers:
+o	Profitability and ROI: Sustainable margins per unit, payback periods on new locations.
+o	Growth and scalability: Opening new restaurants without quality erosion.
+o	Brand equity: Strengthening reputation, awards, and long-term positioning.
+o	Risk control: Predictable performance, compliance, resilience to cost volatility.
+Regulatory Bodies (Food Safety, Labor, Tax, Data Protection)
+•	Description: Authorities responsible for enforcing compliance in food handling, licensing, labor law, taxa-tion, and privacy (e.g., GDPR for customer data).
+•	Main Drivers:
+o	Food safety and hygiene: HACCP adherence, traceability, allergen labeling.
+o	Consumer protection: Transparent pricing, accurate information, complaint handling.
+o	Labor compliance: Contracts, working hours, health and safety.
+o	Tax compliance: Accurate invoicing, reporting, audits.
+o	Data protection: Proper consent, retention, and security for reservation/loyalty data.
+Suppliers and Producers (Food, Beverage, Specialty Ingredients)
+•	Description: Local farmers, fisheries, artisanal producers, beverage distributors, and premium importers.
+•	Main Drivers:
+o	Stable demand and forecasting: Predictable orders to manage seasonality and production capacity.
+o	Fair pricing and timely payments: Reduced financial risk and long-term partnerships.
+o	Brand alignment: Showcasing provenance and quality through the A&F story.
+o	Operational efficiency: Clear specifications, delivery windows, and quality acceptance criteria.
+Logistics and Distribution Partners
+•	Description: Cold-chain logistics, beverage distributors, last-mile delivery partners (for premium take-away), and warehousing providers (if applicable).
+•	Main Drivers:
+o	On-time, quality-preserving deliveries: Temperature control and reliability.
+o	Cost efficiency: Optimized routes, reduced failed deliveries and returns.
+o	Traceability: Proof of conditions and delivery chain compliance.
+o	Service integration: Smooth coordination with A&F ordering, inventory, and event schedules.
+Brand and Reputation Influencers (Media, Critics, Awards, Influencers)
+•	Description: Food critics, lifestyle media, guide publishers, influencers, and culinary award organizations.
+•	Main Drivers:
+o	Consistency and novelty: Reliable quality plus seasonal innovation.
+o	Authenticity: Credible sourcing, true Portuguese identity with contemporary execution.
+o	Story and differentiation: Strong narratives, chef vision, unique experiences.
+o	Professional responsiveness: PR coordination, event hosting, accurate information.
+Technology Providers
+•	Description: Vendors of POS systems, reservation platforms, CRM/loyalty tools, payment gateways, inven-tory/procurement systems, HR tools, BI/analytics, cybersecurity services.
+•	Main Drivers:
+o	Reliability and uptime: No disruption at service peak times.
+o	Integration and interoperability: APIs and data consistency across systems.
+o	Security and compliance: PCI DSS for payments, GDPR for customer data.
+o	Scalability and cost control: Supporting multi-unit operations without runaway costs.
+Landlords and Property Management (Locations)
+•	Description: Owners and managers of prime commercial spaces, shopping areas, or historic buildings.
+•	Main Drivers:
+o	Stable tenancy and timely payments: Low vacancy risk.
+o	Property value and compliance: Maintenance, safety, and permitted use.
+o	Brand fit: Tenant mix and reputation of the location.
+o	Operational constraints: Noise, waste management, opening hours, renovations.
+Financial Institutions (Banks, Payment Networks, Insurers)
+•	Description: Providers of credit lines, merchant services, insurance (liability, property, business interrup-tion), and risk coverage.
+•	Main Drivers:
+o	Creditworthiness and risk exposure: Predictable cashflows and governance.
+o	Fraud reduction: Secure payments and chargeback management.
+o	Compliance: Proper documentation, audits, and reporting.
+o	Claims discipline: Safe operations that minimize incidents.
+Local Communities and Municipalities
+•	Description: Residents, local associations, and city councils affected by operations (noise, traffic, tourism impact), and beneficiaries of local sourcing.
+•	Main Drivers:
+o	Local economic contribution: Jobs, supplier spend, community engagement.
+o	Responsible operations: Waste, noise, cleanliness, and neighborhood harmony.
+o	Cultural value: Preserving and promoting Portuguese gastronomy.
+o	Sustainability: Reduced footprint, ethical sourcing, waste reduction.
+Competitors and Substitutes
+•	Description: Other gourmet/fine-casual groups, independent chef-driven restaurants, premium delivery “dark kitchens”, and hotel restaurants.
+•	Main Drivers:
+o	Market share and differentiation: Competing on experience, price-value, and reputation.
+o	Talent acquisition: Hiring and retaining skilled staff.
+o	Operational excellence: Faster service, better margins, better customer journey.
+o	Innovation pace: Menu rotation, digital channels, loyalty strategies.
+Event and Experience Partners
+•	Description: Wineries, spirit brands, chefs-in-residence, cultural venues, event planners, and corporate event agencies.
+•	Main Drivers:
+o	Revenue and visibility: Mutual promotion and ticketed event success.
+o	Operational coordination: Scheduling, logistics, and guest experience.
+o	Brand alignment: Premium positioning and consistent quality.
+o	Repeatability: Frameworks for running recurring events efficiently.
+
+
+1.2 Motivation
+A&F’s motivation is rooted in its mission to elevate Portuguese gastronomy through contemporary interpretation, uncompromising product quality, and a consistent premium experience across multiple locations and channels. The group aims to turn local provenance—ingredients, producers, and wine regions—into a scalable value proposition that preserves authenticity while enabling controlled growth.
+Below is a breakdown of A&F’s core motivations:
+•	Delivering a Consistent Premium Guest Experience
+A&F aims to provide a reliably excellent dining experience across all units and channels by:
+o	Standardizing service and kitchen execution without losing “craft” and hospitality warmth.
+o	Offering high-touch moments (pairings, storytelling, celebrations) supported by efficient opera-tions.
+o	Building trust through predictable quality, timing, and transparency (allergens, provenance).
+•	Celebrating Portuguese Provenance and Culinary Identity
+A&F is motivated to strengthen Portuguese culinary culture by:
+o	Prioritizing high-quality local DOP/PGI products and seasonal ingredients.
+o	Showcasing regional diversity through rotating menus and wine programs.
+o	Giving visibility to producers and origin stories as part of the dining narrative.
+•	Sustainable and Responsible Operations
+A&F seeks to grow with responsibility and long-term viability by:
+o	Reducing food waste through better forecasting, portioning, and inventory practices.
+o	Improving energy and packaging sustainability, especially in take-away operations.
+o	Ensuring ethical supplier relationships and transparent sourcing.
+•	Operational Excellence and Margin Resilience
+In a context of cost volatility, A&F is motivated to strengthen operational discipline by:
+o	Improving procurement planning, stock accuracy, and yield management.
+o	Optimizing labor scheduling and training to reduce turnover and maintain standards.
+o	Managing profitability by channel (dine-in, events, take-away) and by menu engineering.
+•	Growth Through Scalable Concepts and New Revenue Streams
+A&F aims to expand while protecting brand integrity by:
+o	Replicating a proven restaurant model into new locations with controlled variation.
+o	Developing B2B and events (private dining, corporate catering) as structured offerings.
+o	Enhancing premium take-away with quality-preserving processes and experience design.
+•	Data-Driven Management and Continuous Improvement
+A&F is motivated to modernize decision-making and coordination by:
+o	Integrating reservations, POS, inventory, procurement, CRM/loyalty, and finance data.
+o	Monitoring performance with clear KPIs (service time, satisfaction, waste, margin, utilization).
+o	Enabling faster, evidence-based adjustments to menus, staffing, and supply planning.
+
+Below, the strategies and actionable tactics related to each goal or driver are described.
+1) Goal/Driver: Consistent Premium Guest Experience (multi-unit, multi-channel)
+Strategy 1.1 — Standardize the essentials, personalize the moments
+•	Tactics:
+o	Define “non-negotiables” (plating standards, service timing targets, greeting/farewell rituals, com-plaint handling rules).
+o	Create a Guest Experience Playbook shared across all units (FOH and BOH).
+o	Implement reservation policies by segment (walk-ins vs. deposits for peak times; no-show rules; waitlist logic).
+o	Introduce a guest profile concept (preferences, allergies, favorite tables, special occasions) to ena-ble consistent personalization.
+Strategy 1.2 — Elevate service quality through training and measurement
+•	Tactics:
+o	Establish an internal A&F Academy (onboarding + continuous training; role-based certifications for hosts, servers, sommeliers).
+o	Use “mystery guest” audits and structured checklists; close the loop with corrective actions.
+o	Create a service KPI set per unit: average seating-to-order time, course pacing, complaint resolu-tion time, NPS/CSAT.
+Strategy 1.3 — Protect the experience during peak load and disruptions
+•	Tactics:
+o	Implement capacity and pacing controls (table turn targets, kitchen throughput limits, buffer ta-bles).
+o	Introduce contingency playbooks (supplier substitution rules, equipment failure response, staffing shortages).
+o	Design omnichannel consistency (take-away packaging standards, pickup flow, delivery partner SLAs).
+
+2) Goal/Driver: Provenance-Led Differentiation (Portuguese identity + seasonal innovation)
+Strategy 2.1 — Make provenance explicit and scalable
+•	Tactics:
+o	Create a Provenance Catalog: ingredient origins, DOP/PGI attributes, producer profiles, seasonal availability calendar.
+o	Establish menu rules: minimum % of local/DOP/PGI ingredients; rotating “region spotlight” items.
+o	Standardize storytelling assets (menu descriptors, table talk tracks, wine pairing notes) in a reusa-ble content library.
+Strategy 2.2 — Build long-term producer partnerships (quality + stability)
+•	Tactics:
+o	Segment suppliers (strategic producers vs. commodity distributors) and define partnership models per segment.
+o	Co-plan seasonal volumes and agree substitution protocols; implement quality acceptance criteria at delivery.
+o	Launch joint activations (producer dinners, wine-maker nights, “harvest menu” collaborations).
+Strategy 2.3 — Innovate through a disciplined culinary pipeline
+•	Tactics:
+o	Define an R&D cadence (quarterly menu releases; monthly specials; test kitchen process).
+o	Use structured feedback loops (dish performance, returns, guest sentiment, margin contribution).
+o	Maintain a “signature core” menu to preserve identity, plus seasonal layers to keep novelty.
+
+3) Goal/Driver: Sustainable and Responsible Operations (waste, footprint, credibility)
+Strategy 3.1 — Treat waste reduction as an operational capability
+•	Tactics:
+o	Implement waste measurement by category (prep waste, spoilage, plate waste) and link to root causes.
+o	Introduce forecasting-based prep planning; portion control standards; “use-first” inventory rules (FEFO).
+o	Create waste-to-value practices (daily specials using surplus, staff meals, donation partnerships where feasible/legal).
+Strategy 3.2 — Sustainability-by-design for take-away and logistics
+•	Tactics:
+o	Standardize packaging: recyclable/compostable options, heat retention, labeling for reheating and allergens.
+o	Optimize pickup/delivery windows to reduce late deliveries and quality degradation.
+o	Define sustainability KPIs: packaging mix, waste per cover, energy per service, supplier sustainabil-ity scoring.
+Strategy 3.3 — Strengthen transparency and compliance readiness
+•	Tactics:
+o	Maintain traceability records (batch/lot where applicable), allergen controls, and HACCP evidence.
+o	Create audit-ready documentation templates for suppliers, processes, and incident handling.
+o	Publish “provenance & impact” communication (in-store and online) to reinforce credibility.
+
+4) Goal/Driver: Operational Excellence and Margin Resilience (cost volatility, labor intensity)
+Strategy 4.1 — Control unit economics through menu and procurement discipline
+•	Tactics:
+o	Implement menu engineering: contribution margin per dish, popularity vs. profitability, cross-sell pairing logic.
+o	Standardize recipe costing and yield tracking; manage substitution impacts on cost and guest expe-rience.
+o	Create purchasing frameworks: approved supplier lists, contract tiers, volume discounts, price monitoring.
+Strategy 4.2 — Improve labor productivity without degrading hospitality
+•	Tactics:
+o	Adopt demand-based scheduling (reservations + historical data); define staffing baselines by service type.
+o	Role clarity and micro-processes (station setup, handoffs between kitchen and FOH, bar batching).
+o	Reduce churn via training pathways and predictable rostering; measure turnover cost and time-to-proficiency.
+Strategy 4.3 — Strengthen operational control across units
+•	Tactics:
+o	Define standard operating procedures (SOPs) per process: opening/closing, stock counts, cash han-dling, incident response.
+o	Implement a multi-unit performance cockpit: daily flash report (sales, covers, labor %, waste, com-plaints).
+o	Create governance routines: weekly ops review, monthly finance review, quarterly strategy review.
+
+5) Goal/Driver: Growth via scalable concepts and new revenue streams (events, B2B, take-away)
+Strategy 5.1 — Expand through a repeatable “unit blueprint”
+•	Tactics:
+o	Define the A&F “unit template”: layout requirements, equipment standards, staffing model, train-ing plan.
+o	Create a site selection scorecard (footfall, competition, rent-to-sales ratio, tourism mix).
+o	Standardize the opening playbook: pre-opening training, soft opening, stabilization KPIs.
+Strategy 5.2 — Professionalize events and B2B as products
+•	Tactics:
+o	Package events as defined offerings (private dining tiers, corporate menus, beverage packages, add-ons).
+o	Establish an account management process: lead intake, proposal generation, contracting, invoicing, post-event review.
+o	Define SLAs and risk rules: deposits, cancellation policies, dietary handling, capacity constraints.
+Strategy 5.3 — Build premium take-away as a controlled channel
+•	Tactics:
+o	Design a “travel-ready” menu with explicit constraints (max holding time, reheatability, packaging fit).
+o	Implement quality gates (final checklists, packaging labeling, handoff confirmation).
+o	Track channel-specific profitability and satisfaction (on-time rate, refund rate, repeat purchase).
+
+6) Goal/Driver: Data-Driven Management and Integrated Operations (systems + decision speed)
+Strategy 6.1 — Establish a single operational truth across systems
+•	Tactics:
+o	Define master data ownership: menu items, recipes, suppliers, products, units, customer profiles.
+o	Integrate core flows: reservations → POS → inventory → procurement → finance; unify reporting definitions.
+o	Implement data quality controls: mandatory fields, validation rules, reconciliation routines.
+Strategy 6.2 — Use analytics to drive continuous improvement
+•	Tactics:
+o	Create dashboards by persona: CEO/CFO (profitability), Ops (throughput/waste), Chef (dish per-formance), Marketing (segments/retention).
+o	Implement experimentation loops: A/B testing for offers, reservation policies, menu placement, pairing suggestions.
+o	Define early-warning indicators (stockout risk, no-show spikes, labor overrun, negative sentiment).
+Strategy 6.3 — Protect trust through security and privacy
+•	Tactics:
+o	Apply GDPR-by-design for reservation/loyalty data: consent, minimization, retention schedules.
+o	Enforce role-based access, audit logs, and incident response procedures.
+o	Ensure PCI compliance and strong payment security controls for deposits and online transactions.
+
+
+1.3 Business Layer
+1.3.1 Organization
+A&F (ALMA&FUMO) is organized as a multi-unit restaurant group, combining a central (group) structure that de-fines standards and governance with local unit structures responsible for daily execution. The main business units and departments are described below.
+
+Executive Leadership & Corporate Governance Division
+•	Objectives:
+o	Define A&F’s vision, positioning, growth strategy, and investment priorities.
+o	Ensure cross-unit alignment, governance discipline, and brand integrity.
+o	Manage stakeholder relationships (investors, strategic partners, regulators at a high level).
+•	Business Processes Involved:
+o	Strategic planning and governance.
+o	Performance review and target setting (unit scorecards).
+o	Portfolio/investment planning (new openings, refurbishments).
+o	Risk oversight and policy approval.
+•	Relations with Other Units:
+o	Works with Finance to set budgets and profitability targets.
+o	Aligns with Operations and Culinary leadership on standards and expansion readiness.
+o	Coordinates with Marketing/Brand on positioning, reputation, and growth campaigns.
+•	Organization of the Unit:
+o	Responsible Role: CEO / Managing Director — overall direction, investment decisions, stakeholder governance.
+o	Intermediate Roles: COO (Operations focus), Group General Manager (multi-unit execution), Strat-egy/PMO lead (optional).
+o	Key Functions: governance routines, strategic decisions, performance reviews, escalation handling, brand stewardship.
+
+Operations (Multi-Unit) Management Department
+•	Objectives:
+o	Ensure consistent execution across units (service, pacing, guest handling, operating routines).
+o	Drive productivity, cost control, and reliability (especially peak-time operations).
+o	Lead unit managers and ensure standards adoption.
+•	Business Processes Involved:
+o	Dine-in service delivery and guest experience.
+o	Reservation/capacity management governance (policies, pacing rules).
+o	Inventory and storage management (operational oversight).
+o	Incident management (operational side) and continuous improvement.
+•	Relations with Other Units:
+o	Works with Culinary/R&D to implement menus and operational constraints.
+o	Coordinates with Procurement for ordering standards and supplier performance escalation.
+o	Works with HR/Learning for training execution and staffing readiness.
+o	Feeds BI/Analytics with operational KPI requirements and uses dashboards for governance.
+•	Organization of the Unit:
+o	Responsible Role: COO / Head of Operations — multi-unit standards, performance, and operational governance.
+o	Intermediate Roles: Regional/Area Managers (if scale requires), Quality/Service Excellence lead (op-tional).
+o	Key Functions: SOP definition, unit audits, peak readiness, productivity initiatives, cross-unit best practices.
+
+Culinary Direction, Menu & Experience (R&D) Department
+•	Objectives:
+o	Define A&F culinary identity and ensure menu consistency and innovation cadence.
+o	Develop tasting menus, seasonal launches, and “travel-ready” take-away offerings.
+o	Ensure recipes are executable at scale and aligned with margin targets and provenance strategy.
+•	Business Processes Involved:
+o	Menu, product and experience design.
+o	Kitchen production standards and service preparation governance.
+o	Menu engineering (with Finance/Procurement).
+o	Provenance storytelling definition (in coordination with Marketing).
+•	Relations with Other Units:
+o	Works with Procurement on ingredient selection, substitutions, and supplier relationships.
+o	Coordinates with Quality & Compliance on allergen matrix and food safety constraints.
+o	Works with Operations on throughput constraints, training needs, and execution standards.
+•	Organization of the Unit:
+o	Responsible Role: Culinary Director / Executive Chef — culinary vision, recipe standards, menu ap-proval.
+o	Intermediate Roles: R&D Chef(s), Group Sous Chef(s), Beverage Director/Sommelier lead (if sepa-rated).
+o	Key Functions: recipe development and versioning, menu release governance, tasting/event design, kitchen standards.
+
+Procurement & Supplier Management (SRM) Department
+•	Objectives:
+o	Ensure reliable, high-quality sourcing aligned with provenance, sustainability, and cost targets.
+o	Standardize purchasing, contracts, supplier performance management, and risk controls.
+o	Reduce volatility impacts via planning, price governance, and substitution rules.
+•	Business Processes Involved:
+o	Supplier onboarding/segmentation and contract management.
+o	Purchasing planning and purchase order management.
+o	Delivery scheduling coordination and disputes.
+o	Supplier performance review and governance.
+•	Relations with Other Units:
+o	Works with Culinary/R&D on ingredient specs, seasonal planning, and new menu requirements.
+o	Coordinates with Operations and Unit Managers to align par levels and delivery windows.
+o	Works with Finance on payment terms, budget adherence, and vendor risk.
+o	Coordinates with Quality & Compliance on certifications, traceability, and acceptance criteria.
+•	Organization of the Unit:
+o	Responsible Role: Head of Procurement — sourcing strategy, supplier governance, contract over-sight.
+o	Intermediate Roles: Category Buyers (fresh, beverage, packaging), Supplier Quality liaison (option-al).
+o	Key Functions: negotiation, PO approval policies, supplier scorecards, price monitoring, risk mitiga-tion.
+
+Marketing, Brand & Customer Relationship Department
+•	Objectives:
+o	Grow brand awareness, manage reputation, and drive retention through loyalty and personalized engagement.
+o	Maintain coherent brand voice and provenance-led storytelling across channels.
+o	Support unit demand generation and event promotion.
+•	Business Processes Involved:
+o	Marketing, loyalty and customer relationship management.
+o	Reputation management and feedback loops.
+o	Content management (menu storytelling, producer narratives, campaigns).
+o	Partnerships with hotels/concierges and communities (where applicable).
+•	Relations with Other Units:
+o	Works with Operations to align campaigns with capacity and service readiness.
+o	Coordinates with Culinary/R&D on launches, events, and provenance narratives.
+o	Works with BI/Analytics to measure campaign effectiveness and segment performance.
+•	Organization of the Unit:
+o	Responsible Role: Marketing Director / Brand Lead — brand strategy, acquisition/retention priori-ties.
+o	Intermediate Roles: CRM/Loyalty Manager, Content/PR Manager, Partnerships Manager.
+o	Key Functions: campaign planning, loyalty design, review response governance, content produc-tion, partner management.
+
+Events & B2B Sales Department
+•	Objectives:
+o	Develop structured B2B offerings (private dining, corporate catering) and maximize high-margin event revenue.
+o	Ensure consistent event execution and smooth handoffs into operations.
+o	Maintain corporate accounts and repeat business.
+•	Business Processes Involved:
+o	Events and B2B lifecycle (lead → proposal → contract → execution → invoicing).
+o	Event menu packaging and pricing (with Culinary/Finance).
+o	Post-event review and account development.
+•	Relations with Other Units:
+o	Works with Operations on capacity, staffing plans, run-of-show and execution.
+o	Coordinates with Culinary/R&D on menus, beverage packages, and experience design.
+o	Works with Finance on invoicing, deposits, and contract terms.
+•	Organization of the Unit:
+o	Responsible Role: Head of Events & B2B — pipeline ownership, commercial targets, governance.
+o	Intermediate Roles: Account Managers, Event Coordinators.
+o	Key Functions: lead management, proposal generation, contracting, event planning, service recov-ery for clients.
+
+Finance, Legal & Compliance Department
+•	Objectives:
+o	Ensure financial integrity, profitability control, and compliance readiness across the group.
+o	Manage AP/AR, budgeting, unit P&L, and audit readiness.
+o	Provide policy and risk oversight (incl. data/privacy and payment compliance governance with IT).
+•	Business Processes Involved:
+o	Financial management and compliance.
+o	Budgeting and forecasting (with Executive and Operations).
+o	Contract review (suppliers, landlords, B2B clients).
+o	Regulatory reporting and audit coordination.
+•	Relations with Other Units:
+o	Works with Operations to track labor %, unit economics, and corrective actions.
+o	Coordinates with Procurement on contracts, payment terms, and supplier risk.
+o	Works with Events & B2B on pricing, deposits, invoicing, and margin analysis.
+o	Coordinates with IT on GDPR/PCI-related policies and audit trails.
+•	Organization of the Unit:
+o	Responsible Role: CFO / Finance Director — financial governance, compliance oversight, reporting.
+o	Intermediate Roles: Controller, AP/AR Lead, Legal/Compliance Officer (or external counsel liaison).
+o	Key Functions: reconciliation, closing, budget control, audit readiness, policy enforcement, risk monitoring.
+
+IT, Data & Integration Department
+•	Objectives:
+o	Ensure reliability and interoperability of cloud applications and in-store endpoints.
+o	Protect data, privacy, and security while enabling analytics and continuous improvement.
+o	Provide tooling and support to units with minimal downtime.
+•	Business Processes Involved:
+o	Application integration and data synchronization.
+o	IT service management (monitoring, incident response, vendor management).
+o	Data engineering for BI dashboards and master data governance support.
+o	Security and access management.
+•	Relations with Other Units:
+o	Works with Operations to ensure peak-time resilience and standardized unit setups.
+o	Coordinates with Finance on reconciliation, audit trails, and compliance requirements.
+o	Works with Marketing/CRM on consent management and customer data governance.
+o	Supports Procurement/Inventory by integrating purchasing, stock, and recipe consumption data.
+•	Organization of the Unit:
+o	Responsible Role: IT Manager / Head of IT — service reliability, vendor governance, security pos-ture.
+o	Intermediate Roles: Integration Engineer/iPaaS Admin, Data Analyst/BI Lead, IT Support Lead.
+o	Key Functions: integration monitoring, identity/access control, endpoint management, reporting pipelines, incident handling.
+
+Quality, Food Safety & Operational Risk Department
+•	Objectives:
+o	Maintain HACCP discipline, allergen controls, traceability readiness, and audit evidence.
+o	Reduce operational risk and protect brand integrity through preventive controls.
+o	Coordinate corrective/preventive actions (CAPA) and internal audits.
+•	Business Processes Involved:
+o	Quality, food safety and risk management.
+o	Supplier compliance checks (certifications, acceptance criteria) with Procurement.
+o	Incident management (food safety, allergen risk, major complaints) and CAPA.
+•	Relations with Other Units:
+o	Works with Culinary/R&D on allergen matrix, recipe standards, and labeling.
+o	Coordinates with Operations and unit teams on daily checks and compliance routines.
+o	Supports Finance/Legal in regulatory readiness and audit coordination.
+•	Organization of the Unit:
+o	Responsible Role: Head of Quality & Compliance — HACCP governance, audit readiness, risk over-sight.
+o	Intermediate Roles: Food Safety Specialist, Compliance Auditor (internal or outsourced).
+o	Key Functions: checklist governance, audits, training requirements definition, incident reviews, traceability management.
+
+Restaurant Unit Operations (Per Location)
+(Operational unit responsible for local execution; replicated across A&F locations)
+•	Objectives:
+o	Deliver the A&F guest experience daily with consistency and efficiency.
+o	Ensure local compliance, stock accuracy, and team readiness.
+o	Achieve unit-level financial targets (covers, revenue, labor %, waste).
+•	Business Processes Involved:
+o	Reservation and capacity execution (local).
+o	Dine-in service delivery and take-away handoff.
+o	Receiving, inventory management, daily prep and service routines.
+o	Local incident handling and feedback capture.
+•	Relations with Other Units:
+o	Executes standards defined by Operations and Culinary; escalates issues and constraints.
+o	Coordinates with Procurement for ordering and supplier exceptions.
+o	Works with Quality & Compliance on HACCP execution and audit evidence.
+o	Feeds Finance and BI with accurate operational data and reconciliations.
+•	Organization of the Unit:
+o	Responsible Role: Unit General Manager — overall unit performance, standards, staffing coordina-tion, escalation point.
+o	Intermediate Roles: Restaurant Manager (FOH), Head Chef/Kitchen Manager (BOH), Bar Lead/Sommelier (if applicable).
+o	Key Functions: shift planning, service supervision, daily cash-up, stock counts, local training, service recovery, local compliance checks.
+
+1.3.2 Business Processes
+
+The key business processes of A&F (ALMA&FUMO) are described below.
+Strategic Planning and Governance Process
+Defines A&F’s strategic direction, ensures alignment across units, and monitors performance and risk.
+•	Subprocesses:
+1.	Annual and quarterly planning (growth, positioning, channel strategy)
+2.	Budgeting and investment decisions (new units, refurbishments, equipment)
+3.	KPI review and performance governance (unit scorecards)
+4.	Risk, compliance, and supplier governance reviews
+•	Inputs:
+o	Financial statements, unit P&L, performance dashboards
+o	Market/competitive insights, customer feedback trends
+o	Capacity constraints and operational risk reports
+•	Outputs:
+o	Strategic plan and target KPIs
+o	Investment roadmap and policy updates
+o	Action plans for underperforming units
+•	Managed Information:
+o	Strategy & objectives, KPI definitions, governance minutes
+o	Risk register, compliance status, supplier segmentation
+•	Applications Used:
+o	BI dashboards, planning/budgeting tools, document management
+•	Business Units Involved:
+o	Executive Leadership, Finance, Operations, Marketing, IT/Analytics, Quality & Compliance
+
+Menu, Product and Experience Design Process
+Designs and maintains menus (à la carte, tasting), events, and take-away offerings while ensuring brand coherence and profitability.
+•	Subprocesses:
+1.	Concept and seasonal planning (regional spotlight, signature core)
+2.	Recipe development and testing (R&D cadence)
+3.	Costing and margin validation (menu engineering)
+4.	Allergen review, provenance documentation, release approval
+•	Inputs:
+o	Seasonal availability calendar, supplier catalogs and pricing
+o	Sales mix, dish performance, guest sentiment
+o	Brand guidelines and unit constraints (equipment, throughput)
+•	Outputs:
+o	Released menus (dine-in, tasting, take-away), recipe cards
+o	Pairing notes, provenance/storytelling assets
+o	Target margins and operational prep guidelines
+•	Managed Information:
+o	Recipes/BOM, menu items, allergens, provenance catalog
+o	Contribution margins, test results, version history
+•	Applications Used:
+o	Recipe/costing tool (or module), document repository, BI
+•	Business Units Involved:
+o	Culinary/R&D, Operations, Procurement, Quality & Compliance, Marketing
+
+Supplier and Procurement Management Process
+Ensures reliable sourcing of high-quality ingredients and beverages with controlled cost and compliance.
+•	Subprocesses:
+1.	Supplier onboarding/segmentation and contract setup
+2.	Demand forecasting and purchasing planning
+3.	Purchase order creation and approvals
+4.	Delivery scheduling, disputes, and supplier performance review
+•	Inputs:
+o	Forecasts (reservations, historical sales), par levels
+o	Supplier price lists, contracts, lead times
+o	Quality standards, sustainability criteria
+•	Outputs:
+o	Purchase orders, delivery schedules
+o	Updated supplier scorecards and negotiated terms
+o	Approved substitutions and escalation records
+•	Managed Information:
+o	Supplier master data, contracts, price history
+o	Purchase orders, delivery notes, supplier KPIs
+•	Applications Used:
+o	Procurement/SRM, inventory system, document management
+•	Business Units Involved:
+o	Procurement, Operations, Culinary, Finance, Quality & Compliance
+
+Inventory and Storage Management Process
+Maintains accurate stock, reduces waste, and ensures traceability and correct storage (including cold chain).
+•	Subprocesses:
+1.	Receiving and quality acceptance (incl. temperature checks)
+2.	Stocking and storage allocation (FIFO/FEFO rules)
+3.	Stock counts and reconciliation (cycle counts)
+4.	Waste logging and spoilage management
+•	Inputs:
+o	Delivery notes, accepted quantities, storage requirements
+o	Recipe usage rates, planned prep, event schedules
+•	Outputs:
+o	Updated on-hand inventory and variance reports
+o	Reorder triggers, waste reports, traceability records
+•	Managed Information:
+o	Inventory records, lot/batch (when applicable), expiry dates
+o	Waste records, variance logs, storage compliance evidence
+•	Applications Used:
+o	Inventory management, receiving mobile app, BI
+•	Business Units Involved:
+o	Operations (Unit Mgmt), Kitchen, Procurement, Quality & Compliance
+
+Kitchen Production and Service Preparation Process
+Transforms inventory into prepared components and dishes, ensuring consistency, throughput and food safety.
+•	Subprocesses:
+1.	Prep planning (based on reservations/forecast)
+2.	Mise-en-place production and labeling
+3.	Line execution during service (expediting)
+4.	Post-service reconciliation (yield, waste, next-day prep)
+•	Inputs:
+o	Forecasts and reservations, production sheets
+o	Recipes/standards, allergen controls, available stock
+•	Outputs:
+o	Prepared components and plated dishes
+o	Prep logs, yield/waste metrics, substitution notes
+•	Managed Information:
+o	Production plans, prep logs, recipe versions
+o	Food safety records (temps, checks), waste/yield data
+•	Applications Used:
+o	KDS (Kitchen Display System) or POS kitchen module, checklist/HACCP tool
+•	Business Units Involved:
+o	Kitchen (BOH), Operations, Quality & Compliance
+
+Reservation, Table and Capacity Management Process
+Manages demand, seating, pacing, deposits/no-shows, and guest preferences across units.
+•	Subprocesses:
+1.	Reservation intake (web/phone/partners) and confirmation
+2.	Deposit and no-show policy enforcement (where applicable)
+3.	Waitlist, seating plan, pacing controls
+4.	Guest profile updates (preferences, special occasions, allergies)
+•	Inputs:
+o	Reservation requests, capacity rules, event blocks
+o	Guest data and preferences, operational constraints
+•	Outputs:
+o	Confirmed bookings, optimized seating plans
+o	Utilization reports, no-show metrics, guest notes
+•	Managed Information:
+o	Reservations, table map, guest profiles, policy exceptions
+•	Applications Used:
+o	Reservation system, CRM/guest profile, BI
+•	Business Units Involved:
+o	Front-of-House (Hosts), Unit Management, Marketing/CRM (where applicable)
+
+Dine-In Service Delivery and Guest Experience Process
+Delivers the end-to-end in-restaurant experience from arrival to payment, including service recovery.
+•	Subprocesses:
+1.	Greeting/seating and experience setup
+2.	Order taking, pairing guidance, course pacing
+3.	Issue handling/service recovery and complaint management
+4.	Billing, payment, feedback capture
+•	Inputs:
+o	Reservations/walk-ins, guest preferences and constraints
+o	Menu availability, pairing notes, service standards
+•	Outputs:
+o	Completed service, payments, tips
+o	Feedback records and recovery actions
+•	Managed Information:
+o	Orders, payments, service incidents, feedback/NPS
+•	Applications Used:
+o	POS, payment gateway, CRM/feedback tool
+•	Business Units Involved:
+o	Front-of-House, Kitchen, Unit Management, Finance (reconciliation)
+
+Premium Take-away and Delivery Fulfillment Process
+Ensures a brand-consistent off-premise experience with quality-preserving packaging and reliable handoff.
+•	Subprocesses:
+1.	Online order intake and slot assignment
+2.	Kitchen preparation (take-away recipes/constraints)
+3.	Packaging, labeling, quality gate and handoff
+4.	Delivery coordination, customer support and refunds (if needed)
+•	Inputs:
+o	Orders, pickup/delivery windows, packaging standards
+o	Ingredient availability, customer constraints (allergens)
+•	Outputs:
+o	Completed orders (picked up/delivered)
+o	Channel performance metrics (on-time, refunds, repeat rate)
+•	Managed Information:
+o	Orders, handoff confirmations, packaging lots (optional), incident logs
+•	Applications Used:
+o	Online ordering, POS/KDS, delivery integration, support ticketing
+•	Business Units Involved:
+o	Kitchen, Front-of-House (handoff), Operations, Customer Support (if separate)
+
+Events and B2B (Private Dining / Corporate Catering) Process
+Manages the full lifecycle of B2B accounts and events as structured “products”.
+•	Subprocesses:
+1.	Lead intake and qualification
+2.	Proposal, menu design, pricing and contracting (deposits/cancellations)
+3.	Event planning and execution (staffing, logistics, run-of-show)
+4.	Post-event invoicing and review (service feedback, margin analysis)
+•	Inputs:
+o	Client requirements, budget, guest counts, dietary constraints
+o	Capacity, staffing plans, supplier availability
+•	Outputs:
+o	Signed agreement, event plan, delivered event
+o	Invoice, post-mortem report, account notes
+•	Managed Information:
+o	Client accounts, proposals/contracts, event orders, profitability by event
+•	Applications Used:
+o	CRM (B2B), quoting/contracting templates, POS/event module, ERP invoicing
+•	Business Units Involved:
+o	Events/Sales, Operations, Kitchen, Finance, Procurement
+
+Marketing, Loyalty and Customer Relationship Management Process
+Drives acquisition, retention, and brand reputation, leveraging data and experiences.
+•	Subprocesses:
+1.	Segmentation and campaign planning
+2.	Content and channel execution (email, social, partners, PR)
+3.	Loyalty/membership management (benefits, tiers, invites)
+4.	Reputation management (reviews, responses, community events)
+•	Inputs:
+o	Customer segments, performance analytics, calendar of experiences
+o	Feedback/review data, brand guidelines
+•	Outputs:
+o	Campaigns, loyalty offers, event promotions
+o	Improved retention metrics, reputation score improvements
+•	Managed Information:
+o	Customer profiles/consents, campaign assets, engagement metrics
+•	Applications Used:
+o	CRM/loyalty, marketing automation, social management, BI
+•	Business Units Involved:
+o	Marketing, Operations, Events, Executive (brand governance)
+
+Financial Management and Compliance Process
+Ensures financial control, invoicing, payments, and regulatory compliance readiness.
+•	Subprocesses:
+1.	Daily cash-up and reconciliation (POS vs payments)
+2.	Accounts payable/receivable (suppliers, B2B invoicing)
+3.	Budget tracking and unit P&L management
+4.	Audit readiness and regulatory reporting (tax, permits)
+•	Inputs:
+o	POS sales, payment processor reports, supplier invoices
+o	Contracts, payroll summaries, tax rules
+•	Outputs:
+o	Financial statements, unit profitability reports
+o	Paid invoices, issued invoices, compliance evidence pack
+•	Managed Information:
+o	Transactions, invoices, budgets, audit trails, compliance documents
+•	Applications Used:
+o	ERP/accounting, POS reporting, BI, document management
+•	Business Units Involved:
+o	Finance, Unit Management, Executive Leadership, Quality/Compliance (where relevant)
+
+1.3.2.12 Quality, Food Safety and Risk Management Process
+Protects guests and brand through HACCP discipline, allergen control, and incident management.
+•	Subprocesses:
+1.	HACCP plan maintenance and training enforcement
+2.	Daily checks (temps, cleaning logs, allergen controls)
+3.	Non-conformance management (supplier issues, service incidents)
+4.	Internal audits and corrective/preventive actions (CAPA)
+•	Inputs:
+o	HACCP procedures, checklists, supplier certifications
+o	Incident reports, audit findings, regulatory updates
+•	Outputs:
+o	Verified compliance logs, CAPA actions
+o	Risk updates, audit-ready evidence, improved controls
+•	Managed Information:
+o	HACCP records, allergen matrix, incident logs, audit reports, risk register
+•	Applications Used:
+o	HACCP/compliance tool, document management, BI (trend analysis)
+•	Business Units Involved:
+o	Quality & Compliance, Operations, Kitchen, Procurement
+
+
+
+
+
+
+1.4 Information Layer
+A&F (ALMA&FUMO) manages a set of information domains that are critical to delivering a consistent premium expe-rience while operating efficiently across multiple locations. 
+Strategic and performance information (goals, KPIs, unit scorecards, budgets, roadmaps) supports governance and investment decisions. 
+Guest and demand information (reservations, seating plans, guest profiles, preferences, consent, feedback) enables personalization, capacity control, and service recovery. 
+Menu and culinary information (menu versions, recipes, allergens, provenance, pairings, pricing and contribution margins) ensures consistency, compliance, and profitability. 
+Supply chain information (suppliers, contracts, price lists, purchase orders, deliveries, quality acceptance, inventory, waste, traceability) supports reliability, cost control, and sustainability goals. Operational execution information (orders, production/prep logs, service incidents, delivery/take-away handoffs) provides real-time control and contin-uous improvement. 
+Finally, financial and compliance information (transactions, invoices, payment reconciliation, tax documentation, HACCP evidence, audit trails) ensures regulatory readiness and financial integrity, while people and facilities infor-mation (roles, training, schedules, equipment maintenance) supports consistent execution and risk reduction.
+
+Strategic Plan & Governance Pack
+•	Description: A&F’s strategic objectives, policies, governance routines, and performance targets per period and per unit.
+•	Major Attributes: period, vision/mission statements, strategic goals, target KPIs, initiatives/portfolio, budg-et allocations, owners, timelines, risks/assumptions.
+•	Relationships: linked to Unit Scorecards, Budget, Roadmap, Risk Register, Marketing Plan.
+•	Applications: BI dashboards, planning/budgeting tools, document management.
+Unit (Restaurant Location)
+•	Description: Master data for each A&F location (Lisbon/Porto/Braga, etc.) and its operational configuration.
+•	Major Attributes: unit ID, name, address, capacity, table map version, opening hours, service formats, equipment profile, local constraints (permits/terrace rules).
+•	Relationships: linked to Reservations, Orders, Inventory, Staff Scheduling, Unit Scorecards, Compliance Logs.
+•	Applications: reservation system, POS, inventory/procurement, HR tool, BI.
+Guest / Customer Profile
+•	Description: Information about guests interacting with A&F across reservations, loyalty, take-away, and events.
+•	Major Attributes: guest ID, name/contact, preferences, dietary restrictions/allergens (as declared), favorite items/tables, consent flags (GDPR), loyalty tier/points, visit history.
+•	Relationships: linked to Reservations, Orders, Payments (references only), Feedback, Marketing Cam-paigns, Event Bookings.
+•	Applications: CRM/loyalty platform, reservation system, marketing automation.
+Reservation / Booking
+•	Description: Booking requests and confirmations, including deposits/no-show controls and seating con-straints.
+•	Major Attributes: reservation ID, unit ID, date/time, party size, channel (web/phone/partner), status, depos-it details, special notes, assigned table/zone, pacing constraints.
+•	Relationships: linked to Guest Profile, Table/Seating Plan, Service Session, No-show/Policy Exceptions, Feedback.
+•	Applications: reservation system, CRM, BI.
+Table / Seating Plan
+•	Description: Structural representation of tables, zones, and capacity rules per unit and per version.
+•	Major Attributes: table ID, zone, seats, combinability rules, accessibility attributes, version, constraints (blocked tables/events).
+•	Relationships: used by Reservations and Service Delivery; linked to Unit and Service Session.
+•	Applications: reservation system (floor plan), ops tooling.
+Menu (Versioned)
+•	Description: Version-controlled menus (à la carte, tasting, take-away, events) per period and per unit/channel.
+•	Major Attributes: menu ID, type, version, effective dates, items included, prices, availability rules, channel applicability, region spotlight metadata.
+•	Relationships: includes Menu Items; linked to Recipe, Allergen Matrix, Provenance, Sales Mix/Performance.
+•	Applications: menu management (POS), recipe/costing tool, BI, web CMS (if applicable).
+Menu Item (Product Offering)
+•	Description: A sellable item (dish, beverage, pairing, add-on) presented on a menu.
+•	Major Attributes: item ID, name, category, price, portion size, prep constraints, availability, contribution margin, cross-sell links (pairings).
+•	Relationships: linked to Recipe, Allergen Matrix, Provenance, Order Line, Sales Analytics.
+•	Applications: POS, recipe/costing, BI.
+Recipe / Bill of Materials (BOM)
+•	Description: Standard recipe specification for consistent production and costing.
+•	Major Attributes: recipe ID, ingredients list with quantities, yield, steps, equipment needs, prep time, ver-sion, food safety notes, substitution rules.
+•	Relationships: consumes Ingredient/Product; supports Menu Items; feeds Costing, Procurement Forecast-ing, Allergen Matrix.
+•	Applications: recipe management/costing tool, procurement/inventory.
+Allergen Matrix & Dietary Rules
+•	Description: Structured allergen and dietary information for menus and items.
+•	Major Attributes: item/recipe reference, allergen flags, cross-contamination notes, dietary tags (vegetarian, gluten-free where applicable), verification status, effective date.
+•	Relationships: linked to Menu Items, Recipes, Guest Preferences/Constraints, Compliance Logs.
+•	Applications: compliance/HACCP tool, menu management, CRM (notes).
+Provenance Record (Origin & Storytelling)
+•	Description: Provenance and origin information for ingredients, producers, and wine regions used in the A&F narrative.
+•	Major Attributes: ingredient/product reference, producer name, region, DOP/PGI info, seasonality, sustain-ability notes, story assets (text/media pointers).
+•	Relationships: linked to Ingredients/Products, Suppliers/Producers, Menu Items, Marketing Content.
+•	Applications: content repository/CMS, supplier/procurement system, BI (optional).
+Supplier / Producer
+•	Description: Supplier master data for food, beverage, packaging, and services (including artisanal produc-ers).
+•	Major Attributes: supplier ID, contacts, lead times, delivery windows, certifications, contract terms, pay-ment terms, scorecard metrics, risk classification.
+•	Relationships: linked to Contracts, Price Lists, Purchase Orders, Deliveries, Quality Acceptance, Prove-nance.
+•	Applications: procurement/SRM, ERP (AP), document management.
+Contract / Agreement
+•	Description: Commercial agreements with suppliers, landlords, partners, and event clients.
+•	Major Attributes: contract ID, parties, scope, pricing rules, SLAs, duration, renewal dates, compliance claus-es, penalties, attachments.
+•	Relationships: linked to Supplier, Price Lists, Events/B2B Accounts, Invoices.
+•	Applications: document management, ERP, CRM (B2B).
+Price List / Cost History
+•	Description: Current and historical supplier pricing used for purchasing and recipe costing.
+•	Major Attributes: supplier ID, product ID, price, currency/unit, validity period, discounts, minimum order quantities, change log.
+•	Relationships: impacts Procurement, Recipe Costing, Menu Engineering, Budget.
+•	Applications: procurement, costing tool, BI.
+Purchase Order
+•	Description: Formal purchasing document representing planned buys for each unit.
+•	Major Attributes: PO ID, supplier, unit, items/quantities, requested delivery date, approvals, status, ex-pected cost.
+•	Relationships: linked to Supplier, Delivery Note, Invoice, Inventory Updates.
+•	Applications: procurement, ERP.
+Delivery Note / Receiving Record
+•	Description: Receiving confirmation of deliveries (including quality acceptance and exceptions).
+•	Major Attributes: receiving ID, PO reference, delivered quantities, temperature checks, acceptance/rejection reasons, timestamps, receiver, photos/attachments.
+•	Relationships: updates Inventory, triggers Disputes, links to Traceability and Compliance.
+•	Applications: inventory/receiving app, compliance tool, procurement.
+Inventory Record (On-hand Stock)
+•	Description: Stock levels per unit/location and per item, including expiry and storage constraints.
+•	Major Attributes: stock item ID, unit, quantity, location, expiry date, reorder point, reserved quantity, valua-tion method.
+•	Relationships: consumed by Production/Prep, replenished via Receiving, referenced by Waste Logs.
+•	Applications: inventory management, procurement, BI.
+Traceability Record (Batch/Lot where applicable)
+•	Description: Records linking delivered goods to batches/lots and their consumption chain (especially for high-risk items).
+•	Major Attributes: lot/batch ID, supplier, product, receiving reference, expiry, storage conditions, affected recipes/items.
+•	Relationships: linked to Receiving, Inventory, Compliance Incidents, Menu Items/Recipes.
+•	Applications: compliance/HACCP tool, inventory system.
+Waste Record
+•	Description: Logged waste to support sustainability and cost control (prep spoilage, plate waste, expiry).
+•	Major Attributes: waste ID, unit, category, item, quantity, reason code, timestamp, estimated cost, correc-tive action note.
+•	Relationships: linked to Inventory, Production, Forecasting, Sustainability KPIs.
+•	Applications: inventory/waste module, BI.
+Order (POS Order / Ticket)
+•	Description: A transaction representing guest consumption (dine-in), take-away, or event consumption.
+•	Major Attributes: order ID, unit, channel, timestamp, table/reservation reference, items/quantities, dis-counts, service notes, status.
+•	Relationships: produces Order Lines, triggers Payment, feeds Sales Analytics, affects Inventory (via recipe consumption).
+•	Applications: POS, KDS, BI.
+Payment / Financial Transaction (Reference)
+•	Description: Payment and settlement records (card, cash, vouchers, deposits) tied to orders and invoices.
+•	Major Attributes: transaction ID, order/invoice reference, method, amount, timestamp, status, reconcilia-tion fields, processor reference.
+•	Relationships: linked to Orders, Deposits, Invoices, Daily Reconciliation.
+•	Applications: payment gateway, POS, ERP/accounting.
+Invoice (AP/AR)
+•	Description: Supplier invoices (AP) and client invoices (AR) for B2B/events and other receivables.
+•	Major Attributes: invoice ID, party, date, amounts/taxes, line items, status, due date, attachments.
+•	Relationships: linked to PO/Receiving (AP) or Event Contract (AR), reconciled with Transactions.
+•	Applications: ERP/accounting, document management.
+Event / B2B Booking
+•	Description: Structured record of private dining/catering/corporate events.
+•	Major Attributes: event ID, client account, date/time, headcount, format, menu package, pricing, depos-it/cancellation terms, run-of-show.
+•	Relationships: linked to Client Account, Contract, Orders, Invoices, Staffing Plan.
+•	Applications: CRM (B2B), quoting/docs, POS/event module, ERP.
+Feedback Record / Review
+•	Description: Guest feedback collected via surveys, direct interactions, or public reviews.
+•	Major Attributes: feedback ID, channel, rating/NPS/CSAT, text, timestamp, linked order/reservation, senti-ment tags, resolution status.
+•	Relationships: linked to Guest Profile, Service Incident, Marketing/Retention, Unit Scorecard.
+•	Applications: CRM/feedback tool, review management, BI.
+Service Incident / Service Recovery Case
+•	Description: Structured record of issues (service delays, allergy risk, quality complaints) and corrective ac-tions.
+•	Major Attributes: case ID, type, severity, timestamps, responsible owner, actions taken, compensation (if any), closure notes.
+•	Relationships: linked to Orders/Reservations, Compliance Logs, Training Needs, Risk Register.
+•	Applications: support/ticketing (or CRM cases), compliance tool, BI.
+HACCP / Compliance Log
+•	Description: Evidence records for food safety and operational compliance (checks, cleaning, temperature logs, audits).
+•	Major Attributes: log ID, unit, checklist type, entries, timestamps, responsible person, deviations, corrective actions, audit attachments.
+•	Relationships: linked to Risk Register, Incidents, Traceability, Training Records.
+•	Applications: HACCP/compliance tool, document management.
+KPI / Unit Scorecard
+•	Description: Performance metrics per unit and consolidated at group level.
+•	Major Attributes: KPI ID, definition, target, actual, period, unit, trend, owner, action notes.
+•	Relationships: linked to Orders, Reservations, Waste, Feedback, Financials, Strategic Plan.
+•	Applications: BI/analytics platform.
+Training Record
+•	Description: Records of completed training and certifications relevant to consistent execution and compli-ance.
+•	Major Attributes: employee/role reference (internal), training module, completion date, validity/expiry, as-sessment results.
+•	Relationships: linked to Compliance, Incidents, Operational Standards.
+•	Applications: LMS/HR tool.
+Asset / Equipment Maintenance Record
+•	Description: Information about critical equipment and maintenance to protect service quality and safety.
+•	Major Attributes: asset ID, unit, type, maintenance schedule, incidents, downtime, service provider, cost.
+•	Relationships: linked to Unit, Risk Register, Service Disruptions.
+•	Applications: maintenance tool (or ERP module), document management.
+
+
+
+
+
+
+1.5 Application Layer
+A&F (ALMA&FUMO) operates a multi-unit, omnichannel application landscape designed to ensure consistency of the guest experience while controlling costs, quality, and compliance. 
+At the core, Reservations/Table Management and POS/KDS orchestrate demand and service execution. These sys-tems feed downstream capabilities such as CRM/Loyalty, Inventory, Procurement, and Finance (ERP/Accounting). Supporting layers include Menu/Recipe & Costing (to standardize execution and margins), Compliance/HACCP (food safety evidence and traceability), and BI/Analytics (unit scorecards and continuous improvement). Integration across these applications is critical to avoid data silos (e.g., menu versions, product master data, guest profiles, and finan-cial reconciliation).
+
+Reservation & Table Management System
+•	Main Goal: Manage reservations, table plans, pacing, deposits/no-shows, and guest notes consistently across units.
+•	Functionalities:
+o	Online/phone/partner reservations, confirmations, and waitlists
+o	Floor plan management, pacing rules, table assignments
+o	Deposit/no-show policy enforcement, special requests tracking
+o	Basic guest notes and visit context
+•	Organizational Units Involved: Front-of-House, Unit Management, Marketing/CRM (for cam-paigns/segments)
+•	Business Processes Supported: Reservation & capacity management; guest experience delivery (pre-arrival)
+•	Information Managed: Reservations, table plans, guest notes, deposit/no-show records
+•	Database Management System: Vendor-managed (SaaS)
+•	IT Platform Obsolescence: Low
+•	Vendor Satisfaction Level: High
+•	Maintenance Cost Level: Moderate
+
+Point of Sale (POS) + Kitchen Display System (KDS)
+•	Main Goal: Execute and record dine-in and take-away orders with operational control and financial traceabil-ity.
+•	Functionalities:
+o	Order entry, modifiers, course pacing, table management
+o	KDS ticket routing, prep status, expediting support
+o	Discounts/vouchers, tips, end-of-day closing and reconciliation
+o	Menu publishing/sync to terminals
+•	Organizational Units Involved: Front-of-House, Kitchen, Unit Management, Finance
+•	Business Processes Supported: Dine-in service; take-away fulfillment; daily reconciliation
+•	Information Managed: Orders, order lines, payments references, discounts, service notes
+•	Database Management System: Vendor-managed (SaaS) or embedded DB (vendor-specific)
+•	IT Platform Obsolescence: Medium (depends on installed terminals/versions)
+•	Vendor Satisfaction Level: Medium–High
+•	Maintenance Cost Level: Moderate–High
+
+Online Ordering & Delivery Integration Platform
+•	Main Goal: Provide a premium take-away ordering experience and integrate delivery workflows with opera-tions.
+•	Functionalities:
+o	Web/mobile ordering, pickup slotting, delivery options
+o	Integration with POS/KDS, order status notifications
+o	Delivery partner integration (where applicable), incident/refund workflow
+o	Packaging/label instructions per item
+•	Organizational Units Involved: Operations, Kitchen, Front-of-House (handoff), Customer Support (if applica-ble)
+•	Business Processes Supported: Premium take-away and delivery fulfillment
+•	Information Managed: Online orders, handoff confirmations, customer communications, incident logs
+•	Database Management System: Vendor-managed (SaaS)
+•	IT Platform Obsolescence: Low
+•	Vendor Satisfaction Level: Medium
+•	Maintenance Cost Level: Moderate
+
+CRM & Loyalty Management System
+•	Main Goal: Build guest relationships, retention, personalization, and targeted engagement across channels.
+•	Functionalities:
+o	Guest profiles, preferences, consent management (GDPR)
+o	Loyalty tiers/points, offers, vouchers, gift cards (optional)
+o	Campaign segmentation and performance tracking
+o	Feedback capture and case management (optional)
+•	Organizational Units Involved: Marketing, Front-of-House (guest notes), Executive (brand/retention KPIs)
+•	Business Processes Supported: Marketing & loyalty; guest experience personalization; feedback manage-ment
+•	Information Managed: Guest profiles, consent flags, loyalty data, engagement metrics, feedback records
+•	Database Management System: Vendor-managed (SaaS)
+•	IT Platform Obsolescence: Low
+•	Vendor Satisfaction Level: High
+•	Maintenance Cost Level: Moderate
+
+Inventory Management System
+•	Main Goal: Maintain accurate stock, support waste reduction, and ensure availability and traceability.
+•	Functionalities:
+o	Receiving, stock movements, expiry (FIFO/FEFO), par levels
+o	Cycle counts and variance management
+o	Waste logging (spoilage/prep/plate waste)
+o	Integration with recipes (theoretical consumption) and purchasing
+•	Organizational Units Involved: Operations (Unit Mgmt), Kitchen, Procurement
+•	Business Processes Supported: Inventory & storage; receiving; waste management; replenishment triggers
+•	Information Managed: Inventory records, receiving logs, waste records, variance logs
+•	Database Management System: PostgreSQL
+•	IT Platform Obsolescence: Medium
+•	Vendor Satisfaction Level: Medium
+•	Maintenance Cost Level: Moderate
+
+Procurement / Supplier Relationship Management (SRM) System
+•	Main Goal: Standardize purchasing, manage suppliers/contracts, and control costs and quality across units.
+•	Functionalities:
+o	Supplier master data, contracts, certifications
+o	Purchase orders, approvals, delivery scheduling
+o	Price list management and supplier performance scorecards
+o	Dispute handling and substitution approvals
+•	Organizational Units Involved: Procurement, Operations, Finance, Quality & Compliance
+•	Business Processes Supported: Supplier and procurement management; governance of supplier perfor-mance
+•	Information Managed: Suppliers, contracts, price lists, purchase orders, supplier KPIs
+•	Database Management System: Microsoft SQL Server (or vendor-managed SaaS)
+•	IT Platform Obsolescence: Medium
+•	Vendor Satisfaction Level: Medium
+•	Maintenance Cost Level: Moderate
+
+Menu, Recipe & Costing System (Menu Engineering)
+•	Main Goal: Ensure consistent execution and profitability by managing recipes, allergens, costing, and menu versions.
+•	Functionalities:
+o	Recipe/BOM versioning, yields, prep standards
+o	Automated costing from supplier price lists; margin analysis
+o	Allergen matrix and dietary tags
+o	Menu versioning by unit/channel and publishing to POS/online
+•	Organizational Units Involved: Culinary/R&D, Procurement, Operations, Quality & Compliance
+•	Business Processes Supported: Menu/product design; kitchen preparation; margin resilience
+•	Information Managed: Recipes, menu items, allergens, cost history, contribution margins
+•	Database Management System: MySQL
+•	IT Platform Obsolescence: Low–Medium
+•	Vendor Satisfaction Level: High
+•	Maintenance Cost Level: Moderate
+
+Compliance & HACCP Management System
+•	Main Goal: Maintain food safety evidence, audits, allergen controls, and traceability readiness.
+•	Functionalities:
+o	HACCP checklists, temperature logs, cleaning schedules
+o	Audit management and CAPA (corrective actions)
+o	Traceability/batch linkage (where applicable)
+o	Incident recording and compliance reporting
+•	Organizational Units Involved: Quality & Compliance, Operations, Kitchen
+•	Business Processes Supported: Quality, food safety, and risk management
+•	Information Managed: HACCP logs, audit reports, incidents, corrective actions, traceability records
+•	Database Management System: Vendor-managed (SaaS) or Oracle Database
+•	IT Platform Obsolescence: Low
+•	Vendor Satisfaction Level: High
+•	Maintenance Cost Level: Moderate–High
+
+Financial Management System (ERP / Accounting)
+•	Main Goal: Ensure financial control, AP/AR, invoicing, payments, and consolidated reporting.
+•	Functionalities:
+o	Accounts payable/receivable, supplier invoice processing
+o	B2B/event invoicing and contract-based billing
+o	Budget tracking, unit P&L, accounting close
+o	Integration with POS settlements and bank/payment reports
+•	Organizational Units Involved: Finance, Executive Leadership, Unit Management (reporting)
+•	Business Processes Supported: Financial management and compliance
+•	Information Managed: Financial transactions, invoices, budgets, audit trails
+•	Database Management System: SAP HANA (or equivalent ERP DB)
+•	IT Platform Obsolescence: Low
+•	Vendor Satisfaction Level: High
+•	Maintenance Cost Level: High
+
+Business Intelligence (BI) & Analytics Platform
+•	Main Goal: Provide performance visibility and decision support at unit and group level.
+•	Functionalities:
+o	Dashboards (sales, covers, labor %, waste, NPS/CSAT, no-shows)
+o	Unit scorecards and trend analysis
+o	Drill-down by channel, menu item, time period
+o	Early-warning indicators (stockout risk, cost spikes, sentiment drops)
+•	Organizational Units Involved: Executive, Finance, Operations, Culinary, Marketing
+•	Business Processes Supported: Governance; continuous improvement; planning and performance monitor-ing
+•	Information Managed: KPI definitions, aggregated operational and financial data, performance reports
+•	Database Management System: Microsoft SQL Server (DWH) + BI tool
+•	IT Platform Obsolescence: Low
+•	Vendor Satisfaction Level: High
+•	Maintenance Cost Level: Moderate
+
+HR & Learning Management System (HRMS/LMS)
+•	Main Goal: Support staffing administration and structured training to ensure consistent execution.
+•	Functionalities:
+o	Employee records, role assignments, scheduling interface (optional)
+o	Training paths, certifications, renewal tracking
+o	Performance notes and compliance-related training evidence
+•	Organizational Units Involved: HR, Operations, Quality & Compliance
+•	Business Processes Supported: Workforce management; training; compliance readiness (training evidence)
+•	Information Managed: Employee profiles (internal), training records, certifications, schedules (optional)
+•	Database Management System: Workday (or vendor-managed HRMS)
+•	IT Platform Obsolescence: Low
+•	Vendor Satisfaction Level: High
+•	Maintenance Cost Level: Moderate
+
+Integration / API & Data Synchronization Platform
+•	Main Goal: Ensure interoperability and data consistency across reservations, POS, CRM, inventory, pro-curement, and ERP.
+•	Functionalities:
+o	API gateway and event-based integrations
+o	Master data synchronization (menu items, units, suppliers)
+o	Monitoring, retries, error handling, audit logs
+o	Data pipelines into BI/DWH
+•	Organizational Units Involved: IT/Analytics, Operations, Finance (integration governance)
+•	Business Processes Supported: Cross-process enablement (integration and data quality)
+•	Information Managed: Integration mappings, sync logs, canonical data models, error queues
+•	Database Management System: Not applicable (platform/service-based) + logging datastore
+•	IT Platform Obsolescence: Low–Medium
+•	Vendor Satisfaction Level: Medium–High
+•	Maintenance Cost Level: Moderate
+
+
+1.6 IT Layer
+A&F (ALMA&FUMO) operates an all-cloud IT model with no owned data centers. 
+Core business applications (Reservations, POS/KDS, Online Ordering, CRM/Loyalty, Inventory, Procurement, ERP/Accounting, Compliance/HACCP, BI, HR/LMS, Integration platform) are delivered primarily as SaaS, comple-mented by limited PaaS components for integration, data pipelines, and analytics. 
+Restaurant locations connect to these cloud services through reliable broadband (with redundancy in critical sites), secure Wi-Fi segmentation for corporate and guest networks, and managed endpoints (POS terminals, kitchen dis-plays, tablets, back-office laptops). 
+The technology priorities are availability during peak service, security and GDPR compliance, standardized connec-tivity across locations, and centralized monitoring to ensure operational continuity.
+1.6.3 Network and Connectivity Infrastructure
+A&F’s network infrastructure connects restaurant units, employees, and cloud services securely and reliably.
+•	Components
+o	Internet Connectivity per Unit
+	Business-grade broadband with SLA (where available) and sufficient upstream capacity for POS and real-time services.
+	Secondary connectivity (4G/5G router or alternative ISP) for failover in critical/high-volume locations.
+o	LAN/Wi-Fi
+	Managed switches and Wi-Fi access points with VLAN segmentation:
+	Corporate network (POS/KDS, back-office devices)
+	IoT/Facilities network (optional: sensors, smart meters)
+	Guest Wi-Fi (isolated, rate-limited)
+o	Secure Remote Access
+	Zero-trust or VPN access for authorized central staff and vendors (support/maintenance).
+o	DNS, Content Filtering, and Secure Web Gateway (optional)
+	Standardized control over outbound traffic and malware/phishing protection.
+•	Key Features
+o	Resilience: dual ISP or cellular failover for uptime.
+o	Central management: remote configuration, policy enforcement, and troubleshooting.
+o	Monitoring: connectivity health, latency, packet loss, and alerting.
+
+1.6.4 Cloud Platform and Hosting Model  
+A&F uses cloud services as the primary infrastructure for applications and data.
+•	Components
+o	SaaS Applications
+	Reservations, CRM, HR/LMS, Compliance/HACCP, Online Ordering, Procurement/SRM, ERP/Accounting (depending on vendor), POS cloud back-office.
+o	PaaS Services (for integration and analytics)
+	API management / iPaaS for system interoperability.
+	Message/event streaming (optional) for near real-time operational events (orders, reserva-tions).
+	Managed databases and data storage for BI/warehouse, logs, and integration state.
+o	Identity and Access Management (IAM)
+	Central identity provider (IdP), SSO, MFA, role-based access control.
+o	Observability Stack
+	Cloud monitoring, log aggregation, tracing (where applicable), and alerting.
+•	Key Features
+o	Elasticity: scale-by-demand without local infrastructure growth.
+o	Standardization: consistent configuration across units.
+o	Vendor dependency management: portability and data export capabilities as architectural re-quirements.
+
+1.6.5 Endpoint, POS, and In-Store Device Infrastructure
+Restaurant operations rely on specialized endpoints that must remain reliable under network instability.
+•	Components
+o	POS Terminals and Payment Devices
+	Managed terminals (or tablets) with hardened configurations.
+	Payment devices supporting tokenization and PCI-aligned processing.
+o	Kitchen Display System (KDS) Screens
+	Fixed displays/tablets in kitchen pass, connected to POS/KDS cloud services.
+o	Back-Office Devices
+	Laptops/tablets for managers (inventory receiving, scheduling, reporting).
+o	Printers and Peripheral Devices
+	Receipt printers, kitchen printers (optional fallback), label printers for take-away.
+o	Mobile Devices
+	Tablets/phones for receiving, checklist execution (HACCP), and quick manager workflows.
+•	Key Features
+o	Mobile Device Management (MDM): remote policies, app deployment, patching.
+o	Offline/Degraded modes: POS ability to operate with limited connectivity, with later sync.
+o	Standard equipment baselines: unit template for new openings.
+1.6.6 Storage and Data Management
+Without on-prem data centers, data is stored in vendor platforms and managed cloud services, with clear rules for ownership and retention.
+•	Components
+o	SaaS Data Stores
+	Application-managed storage for reservations, CRM profiles, POS transactions, compliance logs, etc.
+o	Central Analytics Storage
+	Data warehouse/lakehouse (managed cloud service) for consolidated reporting and cross-system analytics.
+o	Document Storage
+	Secure cloud document repository for contracts, supplier certifications, audit evidence.
+o	Backup and Archiving
+	Vendor-provided backups for SaaS + A&F-managed backups for analytics stores and inte-gration configs.
+•	Key Features
+o	Data retention policies: GDPR-aligned retention and deletion workflows.
+o	Encryption: at rest and in transit (vendor + organization controls).
+o	Data portability: export interfaces and periodic extracts for critical datasets.
+
+1.6.7 Security and Compliance (GDPR, PCI, Operational Security)
+Security is designed around distributed locations and cloud services, emphasizing strong identity, least privilege, and auditability.
+•	Components
+o	Identity Controls
+	SSO + MFA, role-based access by unit and role (FOH, BOH, management, finance).
+o	Network Security
+	Segmented networks, guest Wi-Fi isolation, firewall policies, secure DNS.
+o	Endpoint Security
+	MDM + EDR/antimalware, disk encryption, patch management.
+o	Data Security
+	Encryption, access logging, data masking for analytics, secure key management (where ap-plicable).
+o	Payment Security
+	PCI-aligned payment processing, tokenization, minimized card data exposure.
+o	Incident Response
+	Playbooks for breaches, outages, fraud/chargebacks, and food-safety incidents.
+•	Compliance Standards and Practices
+o	GDPR governance for guest data: consent, purpose limitation, retention schedules.
+o	PCI DSS reliance on payment provider scope reduction + strong operational controls.
+
+1.6.8 IT Service Management and Operations
+A&F’s IT operations emphasize standardization and rapid support to protect service continuity.
+•	Components
+o	Central Support Desk
+	Ticketing, escalation to vendors, and service-level monitoring.
+o	Vendor Management
+	SLA tracking, incident coordination, roadmap alignment, and contract governance.
+o	Configuration Management
+	Standard templates for unit network, POS setup, device baselines.
+o	Change Management
+	Controlled rollouts (pilot unit → phased rollout), training coordination, rollback plans.
+•	Key Features
+o	Peak-hour protection: freeze windows during critical service periods.
+o	Post-incident reviews: root cause analysis and preventive actions.
+
+1.7 A&FChallenges
+A&F (ALMA&FUMO) faces a set of business challenges driven by its premium positioning, multi-unit operations, and omnichannel strategy. The main challenges are described below, including their impact and potential solutions.
+1.7.1 Business Challenges
+
+1.7.1.1 Multi-Unit Consistency of Experience and Quality
+Description: Ensuring the A&F experience (dish quality, service timing, hospitality warmth, storytelling, and service recovery) is consistently delivered across all locations and shifts.
+Impact:
+•	Execution variability reduces trust, repeat visits, and word-of-mouth referrals.
+•	Online reputation becomes fragile: poor performance in one unit affects the entire brand.
+•	Scaling becomes harder, as additional units amplify inconsistency.
+Potential Solutions:
+•	Operational playbooks and “non-negotiables” (service standards, kitchen execution, quality gates).
+•	An internal training academy with role-based certification paths.
+•	Regular QA audits (e.g., mystery guests) and KPI-driven management (service time, NPS/CSAT, complaints).
+
+1.7.1.2 Premium Supply Chain Management (Seasonality, Quality Variability, Traceability)
+Description: Dependence on premium local producers and seasonal ingredients increases the risk of shortages, vari-able quality, and logistical complexity, while requiring strong traceability and allergen control.
+Impact:
+•	Availability issues lead to menu instability and guest frustration.
+•	Higher waste due to short shelf-life items and uncertain demand.
+•	Increased compliance exposure (HACCP evidence, allergen accuracy, traceability during incidents).
+Potential Solutions:
+•	Supplier segmentation (strategic vs. commodity) and contracts with clear service/quality expectations.
+•	Seasonal volume planning and governed substitution rules (pre-approved alternatives).
+•	Strong receiving/acceptance controls and integrated procurement–inventory–menu/recipe management.
+
+1.7.1.3 Margin Pressure and Cost Volatility (Energy, Ingredients, Labor)
+Description: Gourmet operations are labor-intensive and highly sensitive to fluctuating input costs, while guests ex-pect premium quality without constant price increases.
+Impact:
+•	Profitability erosion by unit and by channel (dine-in vs take-away vs events).
+•	Increased pricing pressure can damage value perception and demand.
+•	Short-term decisions (cheaper inputs, understaffing) risk brand dilution.
+Potential Solutions:
+•	Menu engineering (contribution margin + popularity), recipe costing discipline, and yield management.
+•	Procurement governance (price tracking, contract tiers, approved substitutes).
+•	Demand-based staffing and productivity improvement without degrading hospitality.
+
+1.7.1.4 Talent Availability and Capability Building (Service and Culinary Roles)
+Description: Hiring and retaining skilled staff (kitchen, service, sommeliers) while maintaining culture and standards across units is a structural challenge in hospitality.
+Impact:
+•	High turnover increases training burden and consistency issues.
+•	Skill gaps lead to slower service, more mistakes, and weaker guest experience.
+•	Expansion plans can stall due to lack of ready teams for new openings.
+Potential Solutions:
+•	Structured onboarding and continuous training (A&F Academy), clear career pathways, role certification.
+•	Workforce planning tied to growth roadmap and seasonal peaks.
+•	Operational simplification and tooling that reduces friction and errors.
+
+1.7.1.5 Omnichannel Growth Without Brand Dilution (Dine-in + Premium Take-away + Events)
+Description: Expanding revenue streams introduces complexity and risks inconsistent quality across channels, espe-cially for take-away/delivery and large events.
+Impact:
+•	Brand perception suffers if off-premise quality or timing is inconsistent.
+•	Operational overload and conflicting priorities during peak periods.
+•	Increased refunds/complaints and lower repeat purchase in take-away.
+Potential Solutions:
+•	Channel-specific product governance (travel-ready menu rules, packaging standards, quality gates).
+•	Standardized event packages with defined capacity, SLAs, deposits/cancellation policies.
+•	Channel performance dashboards and explicit rules for prioritization during peak load.
+
+1.7.1.6 Demand Variability and Capacity Management (No-Shows, Peaks, Seasonality)
+Description: Restaurant revenue is highly dependent on balancing capacity utilization and pacing, while dealing with no-shows, uneven demand, and tourism-driven peaks.
+Impact:
+•	Lost revenue from no-shows and underutilization.
+•	Overload leads to slower service, mistakes, and negative reviews.
+•	Higher waste when forecasting is inaccurate.
+Potential Solutions:
+•	Reservation policy management (deposits for peak slots, waitlist optimization, pacing rules).
+•	Forecasting using reservations + historical data to drive prep and staffing plans.
+•	Continuous tuning of service throughput and table turn targets (without harming experience).
+
+1.7.1.7 Reputation, Differentiation, and Competitive Pressure
+Description: Competing in the premium dining space requires ongoing differentiation (provenance, innovation, expe-rience design) and proactive reputation management.
+Impact:
+•	Weak differentiation increases price sensitivity and reduces loyalty.
+•	Negative reviews can rapidly reduce demand, especially among tourists and first-time guests.
+•	Marketing spend rises if retention and referrals decline.
+Potential Solutions:
+•	Provenance-led positioning, seasonal innovation cadence, and curated experiences (wine dinners, chef’s ta-ble).
+•	Structured review and feedback management with fast service recovery loops.
+•	Loyalty/membership strategy focused on repeat visits and personalized engagement.
+
+1.7.1.8 Governance and Scalability of the Operating Model
+Description: As A&F grows, it must scale governance (decision rights, standards, data, and reporting) without be-coming bureaucratic or slow.
+Impact:
+•	Misalignment between units and central functions (menu, procurement, marketing).
+•	Delayed decisions and inconsistent execution.
+•	Limited visibility into performance and root causes across locations.
+Potential Solutions:
+•	Clear operating model: standardized processes + local autonomy boundaries.
+•	Integrated reporting (unit scorecards) and governance routines (weekly ops review, monthly financial re-view).
+•	Strong master data ownership and KPI definitions to ensure comparability across units.
+
+1.7.2 Application Challenges
+A&F faces several application-layer challenges that directly affect consistency, profitability, and scalability across lo-cations and channels:
+Integration and Interoperability Across Core Systems
+A&F relies on multiple applications (Reservations, POS/KDS, Online Ordering, CRM/Loyalty, Inventory, Procure-ment/SRM, ERP, Compliance/HACCP, BI) that must exchange data reliably and in near real-time. Weak integration creates manual work and inconsistencies that degrade the guest experience and operational control.
+•	Impact:
+o	Data silos (e.g., guest profiles not aligned between reservations and CRM).
+o	Inconsistent menu versions across POS and online ordering.
+o	Reconciliation issues between POS settlements and ERP, increasing financial risk.
+•	Examples:
+o	A menu item is updated in POS but not reflected in online ordering, causing order errors.
+o	Reservations data is not shared with forecasting, resulting in over/under-prep and waste.
+•	Potential Solutions:
+o	Adoption of an integration/API platform (iPaaS), canonical data model, and master data govern-ance.
+o	Event-driven synchronization (orders, reservations, inventory movements) with monitoring and re-tries.
+Data Quality and Master Data Governance
+Consistency of “master data” (menu items, recipes, allergens, ingredients, suppliers, units, pricing) is essential to de-liver the same experience everywhere and maintain reliable analytics.
+•	Impact:
+o	Incorrect costing, margin distortion, and poor menu engineering.
+o	Compliance risk due to outdated allergen information.
+o	BI dashboards producing misleading performance insights.
+•	Examples:
+o	Duplicate ingredient codes across units break consolidated procurement reporting.
+o	Allergen matrix not updated after recipe changes, increasing operational risk.
+•	Potential Solutions:
+o	Assigning ownership per master data domain and enforcing validation rules.
+o	Version control and approval workflow for menu/recipe changes with automated publishing.
+Performance, Availability, and Peak-Time Reliability
+Restaurant operations are highly sensitive to downtime during peak service. POS/KDS and reservations must be resil-ient and operate gracefully under network issues.
+•	Impact:
+o	Slower service, lost orders, guest dissatisfaction, and reputational damage.
+o	Operational chaos during busy periods leading to errors and increased waste.
+•	Examples:
+o	POS outage preventing order transmission to kitchen and delaying billing.
+o	Reservation system latency causing seating bottlenecks and poor pacing.
+•	Potential Solutions:
+o	Offline-capable POS, local failover procedures, and clear incident playbooks.
+o	Monitoring/alerting, redundant connectivity, and load testing for peak scenarios.
+Omnichannel Consistency (Dine-in + Events + Premium Take-away)
+Maintaining the same brand standards across channels requires aligned menus, availability rules, packaging con-straints, and customer communication.
+•	Impact:
+o	Brand dilution if take-away quality or timing is inconsistent.
+o	Operational complexity increases when channels have conflicting workflows.
+•	Examples:
+o	Take-away accepts orders for items not suited for transport, increasing complaints/refunds.
+o	Event menus are managed outside core systems, causing procurement surprises.
+•	Potential Solutions:
+o	Channel-specific menu governance (constraints, quality gates) integrated with POS/KDS and pro-curement.
+o	Standardized event packages and workflows connected to finance and inventory.
+Security, Privacy (GDPR) and Payment Compliance (PCI)
+A&F processes personal data (reservations, preferences, loyalty) and payment data (deposits, transactions). Ensuring compliance and trust is non-negotiable.
+•	Impact:
+o	Legal exposure and reputational damage from breaches or non-compliance.
+o	Operational constraints if consent/retention are unmanaged.
+•	Examples:
+o	Guest preferences stored without proper consent or retention controls.
+o	Weak access controls enabling unauthorized viewing of personal data.
+•	Potential Solutions:
+o	Privacy-by-design, role-based access control, audit logs, retention schedules.
+o	Secure payment integrations, tokenization, and regular compliance reviews.
+Cost Management and Vendor Lock-in
+Multi-unit SaaS licensing can scale costs rapidly, and vendor dependencies can limit flexibility or integration options.
+•	Impact:
+o	High recurring costs and constrained roadmap decisions.
+o	Difficulty replacing components without operational disruption.
+•	Examples:
+o	Per-terminal POS licensing grows disproportionately with new units.
+o	Reservation/CRM vendor lacks APIs needed for forecasting and BI.
+•	Potential Solutions:
+o	Periodic application portfolio review (“keep/replace/consolidate” logic).
+o	Preference for API-first vendors and contract clauses supporting data portability.
+Change Management and Adoption Across Units
+Even well-chosen applications fail without consistent adoption and training across locations.
+•	Impact:
+o	Inconsistent processes, reduced data reliability, and uneven guest experience.
+•	Examples:
+o	Staff bypassing inventory receiving workflows, causing stock inaccuracies.
+o	Different units applying different reservation rules or incident logging practices.
+•	Potential Solutions:
+o	Standard operating procedures, training paths, and enforcement via audits/KPIs.
+o	Phased rollouts with feedback loops and unit champions.
+
+
+
+1.7.3 Main IT Challenges
+ Connectivity Reliability Across Multiple Locations
+•	Impact: POS/reservations downtime, slower service, revenue loss.
+•	Examples: ISP outages; poor Wi-Fi coverage in kitchens; high latency affecting cloud POS.
+•	Potential Solutions: dual connectivity, QoS for POS traffic, managed network equipment, proactive monitor-ing.
+Cloud Vendor Dependence and SLA Management
+•	Impact: Limited control over outages; integration constraints; lock-in risks.
+•	Examples: reservation vendor outage during peak; API changes breaking integrations.
+•	Potential Solutions: vendor due diligence, portability clauses, integration monitoring, fallback procedures.
+Security and Privacy in a Distributed Retail Environment
+•	Impact: GDPR exposure, reputational damage, operational disruption.
+•	Examples: shared accounts; unmanaged devices; unauthorized access to guest data.
+•	Potential Solutions: SSO/MFA, RBAC by unit, MDM/EDR, staff training, audit logging.
+Operational Resilience and Offline Capability
+•	Impact: inability to process orders/payments during outages.
+•	Examples: cloud POS unavailable; payment network issues.
+•	Potential Solutions: offline POS mode, local printing fallback, manual procedures, periodic drills.
+Observability and Support at Peak Times
+•	Impact: slow incident detection, longer resolution times, inconsistent service.
+•	Examples: issues discovered by staff rather than monitoring; unclear vendor responsibility.
+•	Potential Solutions: centralized monitoring, clear escalation paths, runbooks, post-mortems.
+
+ 
+2.	 Project Goals
+Your mission is to assess current business, information, application architecture of A&F (Alma & Fumo – Portuguese Gourmet Restaurant Group), by proposing answers to the following questions. The models should be performed us-ing ArchiMate. The report should answer the questions that appear below. This will involve choosing the most ap-propriate viewpoint.
+
+1. Context. 
+a) What is the context of the A&F (Alma & Fumo – Portuguese Gourmet Restaurant Group)?
+b) Which business units are involved in managing the flows between A&F and its context?
+
+2. Products and Services
+Which products and services are provided by A&F? To which stakeholders?
+
+3. Big Picture
+A&F CEO requested a “Big Picture” of A&F. Identify the main business processes, business units, applications, and in-frastructure that supports A&F products and services.
+
+4. Strategy (Means and Ends): 
+a) What is the vision and the Goals of A&F?
+b) Propose a business model canvas for A&F, including its Mission, strategies, tactics, business policies and rules, re-quirements, and constraints. 
+c) Are there any goals, principles or requirements that are contradictory among themselves?
+d) Are there any goals, principles or requirements that are misaligned, or not considered in the remaining Enterprise Architecture?
+
+5. Organization structure 
+What is the organization structure (and roles) of A&F?
+
+6. Business Process
+What are the core A&F Processes?
+a) Inputs, outputs and Information entities
+b) Roles and actors
+c) Subprocesses
+d) Goals realized
+
+7. Information Entities
+7.1. What Information Entities support the business processes?
+a) Major attributes
+b) (business) Identifier
+c) Inmon classification for the attributes
+7.2. What are the structural relations among the information entities?
+7.3. In which business processes are the information entities created, updated, read, or deleted?
+
+8. Application Architecture
+8.1 AS-IS
+a) What are the current applications that support A&F processes?
+b) What processes and information do each application support?
+c) Just considering the IT Platform obsolescence, Vendor Satisfaction Level, Application Satisfaction Level and the maintenance cost, classify each application in: “keep”, “discontinue”, “don't know”. Explain in detail your approach.
+
+8.2. TO-BE
+a) Ideally, what applications should be available at A&F considering its business processes and information manage-ment (just considering the AS-IS business processes and information)? Or stated differently, if  A&F had no applica-tions whatsoever, what applications would you recommend to support current business and information?
+b) Considering the ideal application landscape computed in 8.2.a), review your answer to 8.1.c), and propose a roadmap for each application. Typical roadmap guidelines are: maintain, discard, replace, consolidate (with another), improve functionalities or upgrade technology. 
+c) Considering the A&F challenges review your proposal in 8.2.b). For the remaining questions of the project consider this proposal.
+d) Do you recommend the usage of any application patterns?
+e) What Application Architecture do you recommend? Model the proposed application architecture, including the application functions, services provided or consumed by the business and by other applications. 
+f) Besides the Application Structure, please also present the Application Usage, the Application Cooperation, and the Application Behaviour viewpoints.
+
+9. IT architecture 
+a) What are the different technological options for implementing the applications? 
+c) Do you recommend a custom development for all the applications? Or a “off-the-shelf” software package? Explain your analysis?
+d) What is the Processing infrastructure do you recommend? What about Storage? And communication? What is your recommendation for the IT architecture? 
+e) What are the dependencies between the IT infrastructure and the applications? Where does each application will run?
+f) Explain how did you implement each guidelines or patterns in the EA of A&F? Do you recommend to consider some other guidelines?
+
+10. Roadmap
+a) What project roadmap do you recommend? Which solutions/applications should be implemented first? Where would you start? 
+b) Considering existing applications (AS-IS) propose a global roadmap for the change.
+
+The project should be demonstrated through a report that will use models to answer questions relating to A&F En-terprise Architecture. The models should be performed using ArchiMate 3 models (and BPMN 2.0 and UML 2.5 when needed) and can be produced with tools such as: Archi, and Enterprise Architect. 
+The report should answer the questions above using views in Archimate, BPMN, UML, matrix, graphs and supporting text. This will involve choosing the most appropriate viewpoint to support your answers.
+
+It is expected, for the purpose of the course, that you make reasonable assumptions about topics that are not clear or where important information for the project execution may be missing in the documentation provided. Please state clearly in your report any assumption that you make.
+3	Planning
+The project is divided into two distinct phases, described in the following table.  The main objective of the first deliv-ery is to provide comments on the content of the preliminary work. The following table identifies the expected focus for the first stage and the final delivery.
+
+Table 1. Project planning. 
+Phase	Due Date	Focus
+Phase 1 	13 March 	Questions 1 – 7
+Phase 2	27 March	Questions 1 - 10
+Presentation	31 March	Project presentation 
+4	Project Delivery 
+	Each delivery shall consist of a single file in ZIP format with:
+	A project report in a single PDF document with the following structure:
+ Introduction.
+ Answer to the questions. Each question should be answered by one or more models and being explic-itly identified by its number and name. 
+	For the final phase all source files used to prepare the project must be submitted (eg, Archi, Enterprise Ar-chitect, Excel, Word)
+	The name of the file and all files included in it should be prefixed AE-N where N is the number of group
+	Projects will be delivered electronically via the Fenix until the deadline described therein.
+ 
+5	Project Evaluation 
+Students are encouraged to undertake the first phase of the project in order to obtain comments regarding the work done. The final project evaluation will be based on the results shown in the following areas:
+	Technical quality of the overall enterprise architecture.
+	Quality of individual artifacts produced.
+	Structure and technical quality of the report.
+	Project Presentation and discussion (in English).
+
+The discussion will last for 15 minutes per group. In the first 10 minutes of discussion, the group should make a presentation summarizing the project done. 
+6	References
+The additional support material needed for the project will be posted on the page EA Fenix (Project section). The ref-erence list below contains links to references relevant to the project.
