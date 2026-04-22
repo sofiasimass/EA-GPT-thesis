@@ -6,8 +6,9 @@ from openai import OpenAI
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from typing import List
 
-
+from .bsp import Cluster, EAWeight, EAWeightResult
 from .matrix import MatrixResult #output schema
 
 class Generator:
@@ -15,6 +16,61 @@ class Generator:
 
         self.llm = ChatOpenAI(model=model_name, temperature=0, request_timeout=120)
         self.structured_output = self.llm.with_structured_output(MatrixResult)
+
+    async def _compute_ea_weights(self, current_clusters: List[Cluster], ea_principles: str):
+        """
+        Analyzes the current BSP result and returns a mapping of 
+        (item1, item2): weight to refine the next iteration.
+        """
+        # Create a summary of the draft clusters for the LLM
+        # The paper suggests clustering helps understand large software systems 
+        cluster_summary = "\n".join([c.summary() for c in current_clusters])
+        
+        prompt = ChatPromptTemplate.from_template("""
+            SYSTEM ROLE:
+            You are a Senior Enterprise Architect. You are reviewing a draft clustering of business processes 
+            to ensure they align with the company's Enterprise Architecture (EA) Principles.
+            
+            EA PRINCIPLES: 
+            {ea_principles}
+            
+            CURRENT DRAFT CLUSTERS:
+            {cluster_summary}
+            
+            TASK:
+            Review the relationships within and between these clusters.
+            - If processes are clustered together but violate principles (e.g., Security vs. Public Access), 
+              assign a NEGATIVE weight (down to -0.5) to the pair of processes to push them apart.
+            - If processes are split but share a logical business domain, 
+              assign a POSITIVE weight (up to 0.5) to the pair of processes to pull them together.
+            
+            Only provide biases for specific pairs that REQUIRE architectural correction.
+            Format your response using the EXACT process names found in the cluster summary.
+        """)
+
+        # Use the specialized structured output for weights
+        weight_llm = self.llm.with_structured_output(EAWeightResult)
+        
+        try:
+            response = await (prompt | weight_llm).ainvoke({
+                "ea_principles": ea_principles,
+                "cluster_summary": cluster_summary
+            })
+            
+            # Convert the list of biases into a dictionary for the clustering algorithm
+            # Format: {(item_a, item_b): weight}
+            weight_map = {}
+            for bias in response.biases:
+                # We sort the tuple to ensure (A, B) is treated the same as (B, A)
+                pair = tuple(sorted([bias.item_a, bias.item_b]))
+                weight_map[pair] = bias.weight
+                print(f"EA Bias Applied: {pair} -> {bias.weight} ({bias.reasoning})")
+            
+            return weight_map
+
+        except Exception as e:
+            print(f"Error computing EA weights: {e}")
+            return {}
 
     async def refine_extraction(self, chunks: list, process_list: list):
         # Base instructions from your prompt.txt

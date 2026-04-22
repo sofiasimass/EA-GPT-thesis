@@ -5,7 +5,37 @@ import json
 import os
 from utils import Matrix, Entity, Process
 from utils import Generator
+from utils.bsp import run_bsp, print_bsp_result
 import fitz
+import pandas as pd
+
+def export_clustered_excel(result, filename):
+    df = result.reordered_matrix.fillna("")
+    
+    # Create a writer object
+    with pd.ExcelWriter(filename, engine='openpyxl') as writer:
+        df.to_excel(writer, sheet_name='Clustered Matrix')
+        workbook  = writer.book
+        worksheet = writer.sheets['Clustered Matrix']
+        
+        # Define a list of soft colors for clusters
+        colors = ["E1F5FE", "F1F8E9", "FFFDE7", "F3E5F5", "E8EAF6", "E0F2F1"]
+        
+        from openpyxl.styles import PatternFill
+        
+        # Apply highlights based on cluster boundaries
+        for i, cluster in enumerate(result.clusters):
+            fill = PatternFill(start_color=colors[i % len(colors)], 
+                               end_color=colors[i % len(colors)], 
+                               fill_type="solid")
+            
+            # Find the row/column indices in the reordered dataframe
+            row_indices = [df.index.get_loc(p) + 2 for p in cluster.processes] # +2 for header/1-index
+            col_indices = [df.columns.get_loc(e) + 2 for e in cluster.entities]
+            
+            for r in row_indices:
+                for c in col_indices:
+                    worksheet.cell(row=r, column=c).fill = fill
 
 def read_inputs():
 
@@ -85,6 +115,24 @@ async def main():
     matrix.export_to_csv(output_csv)
     
     print(f"Matrix generated! {output_csv} contains only the AI-identified data.")
+
+    print("Running initial BSP Clustering...")
+    initial_bsp = run_bsp(matrix.matrix)
+
+    export_clustered_excel(initial_bsp, "initial_clustered_matrix.xlsx")
+    print("Clustered Excel generated: initial_clustered_matrix.xlsx")
+
+    with open("resources/ea_principles.txt", "r") as f:
+        principles = f.read()
+
+    # AI review
+    weights = await ai._compute_ea_weights(initial_bsp.clusters, principles)
+
+    # Final architectural run
+    final_bsp = run_bsp(matrix.matrix, ea_weights = weights)
+
+    export_clustered_excel(final_bsp, "final_clustered_matrix.xlsx")
+    print("Clustered Excel generated: final_clustered_matrix.xlsx")
 
 if __name__ == "__main__":
     asyncio.run(main())

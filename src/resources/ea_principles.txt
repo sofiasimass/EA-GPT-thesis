@@ -1,0 +1,8 @@
+- Minimize the number of dependencies and applications per service
+- Common use applications
+- Front-office processes are separated from back-office processes
+- Channel-specific is separated from channelindependent
+- Critical processes are executed in specific systems
+- The number of implementations of the same information entity is minimized
+- Each information entity is managed by a single application
+- Data is maintained in the source application
