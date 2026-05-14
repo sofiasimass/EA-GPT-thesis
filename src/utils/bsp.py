@@ -69,6 +69,7 @@ class BSPResult:
 
 
 _OP_PRIORITY = {"C": 4, "U": 3, "R": 1, "D": 1}
+_EA_WEIGHT_SCALE = 10  # Applied consistently everywhere weights are used
 
 
 def _op_weight(op) -> int:
@@ -109,8 +110,8 @@ def _affinity(df: pd.DataFrame, a: str, b: str, axis: str, ea_weights: Dict[tupl
     pair = tuple(sorted([a, b]))
     weight = ea_weights.get(pair, 0)
     
-    # We multiply the weight to give it enough "gravity" to move rows
-    return shared + (weight * 10)
+    # Scale weight so it has enough gravity to shift greedy ordering
+    return shared + (weight * _EA_WEIGHT_SCALE)
 
 def _greedy_reorder(items: List[str], affinity_fn) -> List[str]:
     """
@@ -199,7 +200,7 @@ def _reorder_matrix(df: pd.DataFrame, ea_weights: Dict[tuple, float] = None) -> 
     )
     return df.loc[new_procs, new_ents]
 
-def _extract_blocks(df: pd.DataFrame, density_threshold: float = 0.25, ea_weights: Dict[tuple, float] = None) -> List[Cluster]:
+def _extract_blocks(df: pd.DataFrame, density_threshold: float = 0.5, ea_weights: Dict[tuple, float] = None) -> List[Cluster]:
     """
     Scan the reordered matrix for contiguous dense rectangular blocks.
     Adjacent processes are merged into the same cluster when their entity
@@ -248,10 +249,10 @@ def _extract_blocks(df: pd.DataFrame, density_threshold: float = 0.25, ea_weight
             union = len(member_set | curr_set)
             jaccard = len(member_set & curr_set) / union if union else 0
             
-            # Factor in EA weights if they exist
+            # Factor in EA weights with the same scale used in _affinity
             pair = tuple(sorted([member, curr]))
             weight = ea_weights.get(pair, 0)
-            group_similarities.append(jaccard + weight)
+            group_similarities.append(jaccard + (weight * _EA_WEIGHT_SCALE))
         
         # Use the mean similarity for the threshold check
         avg_similarity = sum(group_similarities) / len(group_similarities)
@@ -266,6 +267,8 @@ def _extract_blocks(df: pd.DataFrame, density_threshold: float = 0.25, ea_weight
             proc_groups.append([curr])
 
     # --- Group entities into bands ---
+    # Note: ea_weights keys are (process, process) pairs — they do not apply here.
+    # Entity adjacency is determined purely by Jaccard similarity over shared processes.
     ent_groups: List[List[str]] = [[entities[0]]]
     for j in range(1, len(entities)):
         prev = ent_groups[-1][-1]
@@ -274,15 +277,13 @@ def _extract_blocks(df: pd.DataFrame, density_threshold: float = 0.25, ea_weight
         curr_set = {p for p in procs if presence.at[p, curr]}
         union = len(prev_set | curr_set)
         jaccard = len(prev_set & curr_set) / union if union else 0
-        pair = tuple(sorted([prev, curr]))
-        weight = ea_weights.get(pair, 0)
-        similarity = jaccard + weight
-        if similarity >= density_threshold:
+        if jaccard >= density_threshold:
             ent_groups[-1].append(curr)
         else:
             ent_groups.append([curr])
 
     # --- Pair process groups ↔ entity groups by maximum interaction count ---
+    # If two process groups map to the same entity group, merge them into one cluster.
     clusters: List[Cluster] = []
     for cid, pg in enumerate(proc_groups, start=1):
         best_eg, best_score = ent_groups[0], -1
@@ -290,17 +291,72 @@ def _extract_blocks(df: pd.DataFrame, density_threshold: float = 0.25, ea_weight
             score = int(presence.loc[pg, eg].values.sum())
             if score > best_score:
                 best_score, best_eg = score, eg
-        clusters.append(Cluster(
-            id=cid,
-            name=_cluster_name(best_eg),
-            processes=list(pg),
-            entities=list(best_eg),
-        ))
+
+        existing = next((c for c in clusters if set(c.entities) == set(best_eg)), None)
+        if existing:
+            existing.processes.extend(pg)
+        else:
+            clusters.append(Cluster(
+                id=cid,
+                name=_cluster_name(best_eg),
+                processes=list(pg),
+                entities=list(best_eg),
+            ))
+
+    # --- Assign any unclaimed entity groups to the cluster that interacts with them most ---
+    claimed = {e for c in clusters for e in c.entities}
+    for eg in ent_groups:
+        if any(e not in claimed for e in eg):
+            best_c, best_score = clusters[0], -1
+            for c in clusters:
+                score = int(presence.loc[c.processes, eg].values.sum())
+                if score > best_score:
+                    best_score, best_c = score, c
+            if best_score > 0:
+                new_entities = [e for e in eg if e not in claimed]
+                best_c.entities.extend(new_entities)
+                best_c.name = _cluster_name(best_c.entities)
+                claimed.update(new_entities)
 
     return clusters
 
+def _absorb_pure_readers(clusters: List[Cluster], df: pd.DataFrame) -> List[Cluster]:
+    """
+    Any process with zero C/U operations is a pure consumer.
+    Move it into whichever cluster owns (C) the most entities it reads.
+    """
+    owner_cluster = {}  # entity → cluster index
+    for i, c in enumerate(clusters):
+        for proc in c.processes:
+            for ent in df.columns:
+                if _op_weight(df.at[proc, ent]) == _OP_PRIORITY["C"]:
+                    owner_cluster[ent] = i
 
-def run_bsp(matrix_data: Dict[str, Dict[str, str]], density_threshold: float = 0.25, ea_weights: Dict[tuple, float] = None) -> BSPResult:
+    for c in clusters:
+        readers_to_move = []
+        for proc in c.processes:
+            ops = [df.at[proc, e] for e in df.columns if _op_weight(df.at[proc, e]) > 0]
+            is_pure_reader = all(str(op).upper() in ("R", "nan") for op in ops)
+            if is_pure_reader:
+                readers_to_move.append(proc)
+
+        for proc in readers_to_move:
+            read_ents = [e for e in df.columns if str(df.at[proc, e]).upper() == "R"]
+            best_cluster, best_score = c, 0
+            for ent in read_ents:
+                ci = owner_cluster.get(ent)
+                if ci is not None and ci != clusters.index(c):
+                    score = sum(1 for e in read_ents if owner_cluster.get(e) == ci)
+                    if score > best_score:
+                        best_score, best_cluster = score, clusters[ci]
+            if best_cluster is not c:
+                c.processes.remove(proc)
+                best_cluster.processes.append(proc)
+
+    # Remove any now-empty clusters
+    return [c for c in clusters if c.processes]
+
+def run_bsp(matrix_data: Dict[str, Dict[str, str]], density_threshold: float = 0.5, ea_weights: Dict[tuple, float] = None) -> BSPResult:
     """
     Run the full 4-step BSP algorithm.
 
@@ -322,8 +378,9 @@ def run_bsp(matrix_data: Dict[str, Dict[str, str]], density_threshold: float = 0
     _          = _initial_clusters(df, owners)        # Step 2 (scaffold only)
     reordered = _reorder_matrix(df, ea_weights=ea_weights)                   # Step 3
     clusters  = _extract_blocks(reordered, density_threshold = density_threshold, ea_weights = ea_weights)            # Step 4
+    final = _absorb_pure_readers(clusters=clusters, df=df)
 
-    return BSPResult(clusters=clusters, reordered_matrix=reordered, entity_owners=owners)
+    return BSPResult(clusters=final, reordered_matrix=reordered, entity_owners=owners)
 
 
 def print_bsp_result(result: BSPResult) -> None:
