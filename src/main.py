@@ -141,6 +141,9 @@ async def main():
     
     defined_entities = {e["name"] for e in structured_data.get("entities", [])}
 
+    for p in structured_data.get("processes", []):
+        matrix.set_process_type(p["name"], p["process_type"])
+
     for op in structured_data.get("operations", []):
         if op["entity_name"] not in defined_entities:
             print(f"  WARNING: skipping op — entity '{op['entity_name']}' not in defined list")
@@ -162,7 +165,7 @@ async def main():
     print(f"Matrix generated! {output_csv} contains only the AI-identified data.")
 
     print("Running initial BSP Clustering...")
-    initial_bsp = run_bsp(matrix.matrix)
+    initial_bsp = run_bsp(matrix.matrix, process_types=matrix.process_types)
 
     export_clustered_excel(initial_bsp, "initial_clustered_matrix.xlsx")
     print("Clustered Excel generated: initial_clustered_matrix.xlsx")
@@ -195,7 +198,7 @@ async def main():
         )
         accumulated_weights.update(new_weights)
 
-        current_bsp = run_bsp(matrix.matrix, ea_weights=accumulated_weights)
+        current_bsp = run_bsp(matrix.matrix, ea_weights=accumulated_weights, process_types=matrix.process_types)
 
         out_file = f"clustered_matrix_iter{iteration}.xlsx"
         export_clustered_excel(current_bsp, out_file)

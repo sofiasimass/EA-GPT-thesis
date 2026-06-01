@@ -134,7 +134,8 @@ class Generator:
             "Extracted CRUD Matrix:"
         )
 
+        process_list_str = "\n".join(f"  - {p}" for p in process_list)
         return await (prompt | self.structured_output).ainvoke({
-            "process_list": process_list,
+            "process_list": process_list_str,
             "context": context
         })

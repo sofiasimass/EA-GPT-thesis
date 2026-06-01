@@ -4,21 +4,36 @@ bsp.py — IBM Business System Planning (BSP) clustering
 Pure algorithmic implementation of the 4-step BSP method.
 No LLM involved. Takes a CRUD matrix and returns clusters.
 
-Jaccard Similarity Coefficient (used in your _extract_blocks function)
-Agglomerative Hierarchical Clustering
+Techniques used:
+  - Weighted Jaccard similarity (process and entity grouping)
+  - Greedy nearest-neighbour reordering (Step 3)
+  - Union-Find for atomic co-location constraint (Step 4)
 
-BSP Logic:
+BSP Steps:
   Step 1 — Entity ownership: the process that CREATES an entity "owns" it.
-            Ties are broken by U > R > D priority.
-  Step 2 — Initial clusters: one cluster per owned-entity group.
-  Step 3 — Affinity reordering: iteratively reorder rows/cols so that
-            processes and entities sharing the most operations are adjacent
-            (maximising block-diagonal density).
-  Step 4 — Block extraction: scan the reordered matrix for contiguous dense
-            blocks and name each cluster after its dominant entities.
+            Ties broken by C > U > D > R priority.
+  Step 2 — Initial clusters: scaffold based on owned-entity groups.
+            Result is discarded; used only for conceptual correctness.
+  Step 3 — Affinity reordering: reorder rows/cols so processes and entities
+            with the most shared operations end up adjacent, maximising
+            block-diagonal density in the matrix.
+  Step 4 — Block extraction: group adjacent processes by weighted Jaccard
+            similarity, group entities likewise, then enforce constraints:
+              • Atomic processes: all entities they WRITE (C/U/D) must land
+                in the same cluster (ACID — writes cannot span two systems).
+                Entities they only READ may live in other clusters.
+              • E2E processes: their entities may be split across clusters;
+                the process itself is recorded as spanning those clusters,
+                representing cross-system integration dependencies.
+
+process_type values (set by the LLM during extraction):
+  "atomic"     — single indivisible transaction; cluster boundaries drawn tightly.
+  "end_to_end" — spans multiple departments; cluster boundaries may split it.
+  "ambiguous"  — treated as atomic (safe default).
 """
 
 from __future__ import annotations
+from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Dict, List, Set
 import pandas as pd
@@ -66,10 +81,13 @@ class BSPResult:
     clusters: List[Cluster]
     reordered_matrix: pd.DataFrame   # rows=processes, cols=entities
     entity_owners: Dict[str, str]    # entity → owning process
+    e2e_span: Dict[str, List[int]] = field(default_factory=dict)  # e2e process → cluster ids it spans
 
 
-_OP_PRIORITY = {"C": 4, "U": 3, "R": 1, "D": 1}
-_EA_WEIGHT_SCALE = 10  # Applied consistently everywhere weights are used
+# Numeric weights for CRUD operations.
+# C=4 (highest) because creation implies full ownership of the entity.
+# Used in affinity calculations and entity ownership resolution.
+_OP_PRIORITY = {"C": 4, "U": 3, "D": 2, "R": 1}
 
 
 def _op_weight(op) -> int:
@@ -78,40 +96,51 @@ def _op_weight(op) -> int:
         return 0
     return max((_OP_PRIORITY.get(ch, 0) for ch in str(op).upper()), default=0)
 
-"""
-def _affinity(df: pd.DataFrame, a: str, b: str, axis: str) -> int:
-    #Count shared non-null cells between two rows (axis='row') or columns (axis='col').
+def _affinity(df: pd.DataFrame, a: str, b: str, axis: str, ea_weights: Dict[tuple, float] = None) -> float:
+    """
+    Measure affinity between two processes (axis='row') or two entities (axis='col').
+
+    For each shared item, sum min(w_a, w_b) — the minimum of the two operation weights.
+    This captures "mutual commitment": two processes that both CREATE an entity score
+    higher than one that creates and one that only reads.
+
+      C(4) & C(4) → min=4  (both owners — maximum affinity)
+      C(4) & U(3) → min=3  (creator + updater — strongly related)
+      C(4) & R(1) → min=1  (producer/consumer — weaker link)
+      R(1) & R(1) → min=1  (both read-only — coincidence, not co-ownership)
+
+    Result is normalised to [0,1] by dividing by the theoretical maximum (4 × item count),
+    so it stays in the same scale as the weighted Jaccard used in _extract_blocks.
+
+    ea_weights (architect-supplied biases in [-0.5, 0.5]) are added directly on top,
+    allowing targeted boosts or penalties without a global scaling constant.
+    """
+    ea_weights = ea_weights or {}
+    max_possible = 4 * (len(df.columns) if axis == "row" else len(df.index))
+
     if axis == "row":
+        # Compara dois processos: itera pelas entidades (colunas)
         shared = sum(
-            1 for col in df.columns
+            min(_op_weight(df.at[a, col]), _op_weight(df.at[b, col]))
+            for col in df.columns
             if _op_weight(df.at[a, col]) > 0 and _op_weight(df.at[b, col]) > 0
         )
     else:
+        # Compara duas entidades: itera pelos processos (linhas)
         shared = sum(
-            1 for row in df.index
+            min(_op_weight(df.at[row, a]), _op_weight(df.at[row, b]))
+            for row in df.index
             if _op_weight(df.at[row, a]) > 0 and _op_weight(df.at[row, b]) > 0
         )
-    return shared
-"""
 
-"""
-Agora considera logo os pesos e a matrix é completamente reordenada conforme os novos pesos
-"""
-def _affinity(df: pd.DataFrame, a: str, b: str, axis: str, ea_weights: Dict[tuple, float] = None) -> float:
-    ea_weights = ea_weights or {}
-    
-    # Base CRUD similarity
-    if axis == "row":
-        shared = sum(1 for col in df.columns if _op_weight(df.at[a, col]) > 0 and _op_weight(df.at[b, col]) > 0)
-    else:
-        shared = sum(1 for row in df.index if _op_weight(df.at[row, a]) > 0 and _op_weight(df.at[row, b]) > 0)
-    
-    # Add architectural bias to the affinity score
+    shared_normalised = shared / max_possible if max_possible else 0
+
+    # Bias arquitectural: somado directamente — weights em [-0.5, 0.5] têm
+    # impacto proporcional sobre uma afinidade normalizada em [0, 1].
     pair = tuple(sorted([a, b]))
     weight = ea_weights.get(pair, 0)
-    
-    # Scale weight so it has enough gravity to shift greedy ordering
-    return shared + (weight * _EA_WEIGHT_SCALE)
+
+    return shared_normalised + weight
 
 def _greedy_reorder(items: List[str], affinity_fn) -> List[str]:
     """
@@ -160,19 +189,30 @@ def _compute_entity_owners(df: pd.DataFrame) -> Dict[str, str]:
     return owners
 
 
-def _initial_clusters(df: pd.DataFrame, owners: Dict[str, str]) -> List[Cluster]:
+def _initial_clusters(df: pd.DataFrame, owners: Dict[str, str], process_types: Dict[str, str] = None) -> List[Cluster]:
     """
     Group entities by owning process → one cluster per owning process.
+    - Atomic owner: all owned entities in one cluster (ACID co-location).
+    - E2E owner: each owned entity seeds its own independent cluster.
     Non-owning processes are assigned to the cluster they interact with most.
     """
+    process_types = process_types or {}
     owner_to_ents: Dict[str, List[str]] = {}
     for entity, owner in owners.items():
         owner_to_ents.setdefault(owner, []).append(entity)
 
     clusters: List[Cluster] = []
-    for cid, (owner, ents) in enumerate(owner_to_ents.items(), start=1):
-        clusters.append(Cluster(id=cid, name=_cluster_name(ents),
-                                processes=[owner], entities=list(ents)))
+    cid = 1
+    for owner, ents in owner_to_ents.items():
+        if process_types.get(owner) == "end_to_end":
+            # Each entity owned by an E2E process seeds its own cluster
+            for ent in ents:
+                clusters.append(Cluster(id=cid, name=ent, processes=[owner], entities=[ent]))
+                cid += 1
+        else:
+            clusters.append(Cluster(id=cid, name=_cluster_name(ents),
+                                    processes=[owner], entities=list(ents)))
+            cid += 1
 
     owning = {c.processes[0] for c in clusters}
     for proc in df.index:
@@ -189,7 +229,12 @@ def _initial_clusters(df: pd.DataFrame, owners: Dict[str, str]) -> List[Cluster]
 
 
 def _reorder_matrix(df: pd.DataFrame, ea_weights: Dict[tuple, float] = None) -> pd.DataFrame:
-    # Pass weight-aware affinity functions to the greedy reorderer
+    """
+    Reorder rows (processes) and columns (entities) so that items with high
+    mutual affinity end up adjacent, producing a block-diagonal structure.
+    ea_weights shift affinity scores before reordering, so architect-supplied
+    biases influence the final layout directly.
+    """
     new_procs = _greedy_reorder(
         list(df.index), 
         lambda a, b: _affinity(df, a, b, "row", ea_weights)
@@ -200,65 +245,84 @@ def _reorder_matrix(df: pd.DataFrame, ea_weights: Dict[tuple, float] = None) -> 
     )
     return df.loc[new_procs, new_ents]
 
-def _extract_blocks(df: pd.DataFrame, density_threshold: float = 0.5, ea_weights: Dict[tuple, float] = None) -> List[Cluster]:
+def _extract_blocks(df: pd.DataFrame, density_threshold: float = 0.5, ea_weights: Dict[tuple, float] = None, process_types: Dict[str, str] = None) -> List[Cluster]:
     """
-    Scan the reordered matrix for contiguous dense rectangular blocks.
-    Adjacent processes are merged into the same cluster when their entity
-    overlap exceeds `density_threshold` (Jaccard similarity).
+    Scan the reordered matrix for contiguous dense rectangular blocks (Step 4).
+
+    Overview:
+      1. Group processes: scan rows top-to-bottom; add a process to the current
+         group if its average weighted Jaccard similarity to existing members
+         exceeds density_threshold, otherwise start a new group.
+      2. Group entities: same scan left-to-right on columns.
+      3. Co-location constraint (atomic processes only): if an atomic process
+         touches entities that Jaccard placed in different groups, those groups
+         are forcibly merged via union-find. This enforces ACID — an atomic
+         process cannot be split across two systems.
+         E2E processes are exempt: their entities may legitimately land in
+         different clusters (different departments → different systems).
+      4. Pair process groups to entity groups by total op-weight score.
+
+    Weighted Jaccard used for grouping:
+        jaccard(P1, P2) = Σ min(w_P1(e), w_P2(e)) / Σ max(w_P1(e), w_P2(e))
+
+      This is the continuous analogue of classic Jaccard:
+        C(4) & C(4) → 4/4 = 1.00  (both create — full overlap)
+        C(4) & R(1) → 1/4 = 0.25  (creator vs reader — penalised asymmetry)
+        R(1) & R(1) → 1/1 = 1.00  (same read pattern — full overlap)
+      Penalises asymmetric commitment; R-R scores identically to C-C because
+      what matters is that both processes have the exact same relationship to
+      the entity, not whether that relationship is read or write.
     """
-    ea_weights = ea_weights or {}
-    presence = df.map(lambda v: 0 if _op_weight(v) == 0 else 1)
+    ea_weights   = ea_weights or {}
+    process_types = process_types or {}
     procs    = list(df.index)
     entities = list(df.columns)
-    n_e      = len(entities)
 
-    """
-    # --- Group processes into bands ---
-    proc_groups: List[List[str]] = [[procs[0]]]
-    for i in range(1, len(procs)):
-        prev = proc_groups[-1][-1]
-        curr = procs[i]
-        prev_set = {entities[j] for j in range(n_e) if presence.at[prev, entities[j]]}
-        curr_set = {entities[j] for j in range(n_e) if presence.at[curr, entities[j]]}
-        union = len(prev_set | curr_set)
-        jaccard = len(prev_set & curr_set) / union if union else 0
-        pair = tuple(sorted([prev, curr]))
-        weight = ea_weights.get(pair, 0)
-        similarity = jaccard + weight
-        print(f"similarity of {pair} is {similarity}")
-        if similarity >= density_threshold:
-            print("JOINED TO CURRENT GROUP")
-            proc_groups[-1].append(curr)
-        else:
-            print("STARTED NEW GROUP")
-            proc_groups.append([curr])
-    """
+    def _weighted_jaccard_procs(p1: str, p2: str) -> float:
+        """Jaccard ponderado entre dois processos, iterando pelas entidades."""
+        intersection = sum(
+            min(_op_weight(df.at[p1, e]), _op_weight(df.at[p2, e]))
+            for e in entities
+        )
+        union_sum = sum(
+            max(_op_weight(df.at[p1, e]), _op_weight(df.at[p2, e]))
+            for e in entities
+        )
+        return intersection / union_sum if union_sum else 0
 
-    # --- Group processes (considera a similarity do grupo inteiro em vez de apenas do ultimo elemento) ---
+    def _weighted_jaccard_ents(e1: str, e2: str) -> float:
+        """Jaccard ponderado entre duas entidades, iterando pelos processos."""
+        intersection = sum(
+            min(_op_weight(df.at[p, e1]), _op_weight(df.at[p, e2]))
+            for p in procs
+        )
+        union_sum = sum(
+            max(_op_weight(df.at[p, e1]), _op_weight(df.at[p, e2]))
+            for p in procs
+        )
+        return intersection / union_sum if union_sum else 0
+
+    # --- Step 4a: Group processes ---
+    # Compare each process to the *average* similarity of the whole current group,
+    # not just the last element. This avoids chaining artefacts where two dissimilar
+    # processes end up in the same group because they each happen to be similar to
+    # the process immediately before them.
     proc_groups: List[List[str]] = [[procs[0]]]
     for i in range(1, len(procs)):
         curr = procs[i]
         current_group = proc_groups[-1]
-        
-        # Calculate the average similarity of 'curr' against EVERY member of the current group
+
         group_similarities = []
-        curr_set = {entities[j] for j in range(n_e) if presence.at[curr, entities[j]]}
-        
         for member in current_group:
-            member_set = {entities[j] for j in range(n_e) if presence.at[member, entities[j]]}
-            union = len(member_set | curr_set)
-            jaccard = len(member_set & curr_set) / union if union else 0
-            
-            # Factor in EA weights with the same scale used in _affinity
+            jaccard = _weighted_jaccard_procs(curr, member)
             pair = tuple(sorted([member, curr]))
-            weight = ea_weights.get(pair, 0)
-            group_similarities.append(jaccard + (weight * _EA_WEIGHT_SCALE))
-        
-        # Use the mean similarity for the threshold check
+            weight = ea_weights.get(pair, 0)  # architect bias shifts the threshold
+            group_similarities.append(jaccard + weight)
+
         avg_similarity = sum(group_similarities) / len(group_similarities)
-        
+
         print(f"Average similarity of {curr} to group {current_group} is {avg_similarity:.2f}")
-        
+
         if avg_similarity >= density_threshold:
             print("JOINED TO CURRENT GROUP")
             proc_groups[-1].append(curr)
@@ -266,29 +330,63 @@ def _extract_blocks(df: pd.DataFrame, density_threshold: float = 0.5, ea_weights
             print("STARTED NEW GROUP")
             proc_groups.append([curr])
 
-    # --- Group entities into bands ---
-    # Note: ea_weights keys are (process, process) pairs — they do not apply here.
-    # Entity adjacency is determined purely by Jaccard similarity over shared processes.
+    # --- Step 4b: Group entities ---
+    # ea_weights are process-pair biases and do not apply here.
+    # Entity grouping uses only the structural Jaccard signal.
     ent_groups: List[List[str]] = [[entities[0]]]
     for j in range(1, len(entities)):
         prev = ent_groups[-1][-1]
         curr = entities[j]
-        prev_set = {p for p in procs if presence.at[p, prev]}
-        curr_set = {p for p in procs if presence.at[p, curr]}
-        union = len(prev_set | curr_set)
-        jaccard = len(prev_set & curr_set) / union if union else 0
+        jaccard = _weighted_jaccard_ents(prev, curr)
         if jaccard >= density_threshold:
             ent_groups[-1].append(curr)
         else:
             ent_groups.append([curr])
 
-    # --- Pair process groups ↔ entity groups by maximum interaction count ---
-    # If two process groups map to the same entity group, merge them into one cluster.
+    # --- Co-location constraint: atomic processes force their entities into the same group ---
+    # Uses union-find so cascading merges (A+B then B+C) are handled correctly.
+    if process_types:
+        parent = {e: e for e in entities}
+
+        def _find(e: str) -> str:
+            while parent[e] != e:
+                parent[e] = parent[parent[e]]
+                e = parent[e]
+            return e
+
+        def _union(e1: str, e2: str) -> None:
+            r1, r2 = _find(e1), _find(e2)
+            if r1 != r2:
+                parent[r2] = r1
+
+        # Preserve existing Jaccard groupings
+        for eg in ent_groups:
+            for i in range(1, len(eg)):
+                _union(eg[0], eg[i])
+
+        # Force co-location for atomic processes — writes only (C/U/D).
+        # Reads don't need ACID guarantees and may cross cluster boundaries.
+        for proc in procs:
+            if process_types.get(proc, "atomic") == "atomic":
+                touched = [e for e in entities if _op_weight(df.at[proc, e]) > _OP_PRIORITY["R"]]
+                for i in range(1, len(touched)):
+                    _union(touched[0], touched[i])
+
+        # Rebuild ent_groups from union-find results
+        groups_dict: Dict[str, List[str]] = defaultdict(list)
+        for e in entities:
+            groups_dict[_find(e)].append(e)
+
+        entity_order = {e: i for i, e in enumerate(entities)}
+        ent_groups = [sorted(g, key=lambda e: entity_order[e]) for g in groups_dict.values()]
+        ent_groups.sort(key=lambda g: entity_order[g[0]])
+
+    # --- Pair process groups ↔ entity groups: score = soma dos op_weights (já não binário) ---
     clusters: List[Cluster] = []
     for cid, pg in enumerate(proc_groups, start=1):
         best_eg, best_score = ent_groups[0], -1
         for eg in ent_groups:
-            score = int(presence.loc[pg, eg].values.sum())
+            score = sum(_op_weight(df.at[p, e]) for p in pg for e in eg)
             if score > best_score:
                 best_score, best_eg = score, eg
 
@@ -303,13 +401,13 @@ def _extract_blocks(df: pd.DataFrame, density_threshold: float = 0.5, ea_weights
                 entities=list(best_eg),
             ))
 
-    # --- Assign any unclaimed entity groups to the cluster that interacts with them most ---
+    # --- Assign any unclaimed entity groups ---
     claimed = {e for c in clusters for e in c.entities}
     for eg in ent_groups:
         if any(e not in claimed for e in eg):
             best_c, best_score = clusters[0], -1
             for c in clusters:
-                score = int(presence.loc[c.processes, eg].values.sum())
+                score = sum(_op_weight(df.at[p, e]) for p in c.processes for e in eg)
                 if score > best_score:
                     best_score, best_c = score, c
             if best_score > 0:
@@ -320,11 +418,13 @@ def _extract_blocks(df: pd.DataFrame, density_threshold: float = 0.5, ea_weights
 
     return clusters
 
-def _absorb_pure_readers(clusters: List[Cluster], df: pd.DataFrame) -> List[Cluster]:
+def _absorb_pure_readers(clusters: List[Cluster], df: pd.DataFrame, process_types: Dict[str, str] = None) -> List[Cluster]:
     """
-    Any process with zero C/U operations is a pure consumer.
+    Any atomic process with zero C/U operations is a pure consumer.
     Move it into whichever cluster owns (C) the most entities it reads.
+    E2E processes are skipped — they legitimately read across cluster boundaries.
     """
+    process_types = process_types or {}
     owner_cluster = {}  # entity → cluster index
     for i, c in enumerate(clusters):
         for proc in c.processes:
@@ -335,6 +435,8 @@ def _absorb_pure_readers(clusters: List[Cluster], df: pd.DataFrame) -> List[Clus
     for c in clusters:
         readers_to_move = []
         for proc in c.processes:
+            if process_types.get(proc) == "end_to_end":
+                continue
             ops = [df.at[proc, e] for e in df.columns if _op_weight(df.at[proc, e]) > 0]
             is_pure_reader = all(str(op).upper() in ("R", "nan") for op in ops)
             if is_pure_reader:
@@ -356,7 +458,21 @@ def _absorb_pure_readers(clusters: List[Cluster], df: pd.DataFrame) -> List[Clus
     # Remove any now-empty clusters
     return [c for c in clusters if c.processes]
 
-def run_bsp(matrix_data: Dict[str, Dict[str, str]], density_threshold: float = 0.5, ea_weights: Dict[tuple, float] = None) -> BSPResult:
+def _compute_e2e_span(df: pd.DataFrame, clusters: List[Cluster], process_types: Dict[str, str]) -> Dict[str, List[int]]:
+    """For each E2E process, return the list of cluster IDs whose entities it touches."""
+    span: Dict[str, List[int]] = {}
+    for proc in df.index:
+        if process_types.get(proc) != "end_to_end":
+            continue
+        touched_ids = [
+            c.id for c in clusters
+            if any(_op_weight(df.at[proc, e]) > 0 for e in c.entities if e in df.columns)
+        ]
+        span[proc] = touched_ids
+    return span
+
+
+def run_bsp(matrix_data: Dict[str, Dict[str, str]], density_threshold: float = 0.5, ea_weights: Dict[tuple, float] = None, process_types: Dict[str, str] = None) -> BSPResult:
     """
     Run the full 4-step BSP algorithm.
 
@@ -372,15 +488,21 @@ def run_bsp(matrix_data: Dict[str, Dict[str, str]], density_threshold: float = 0
     if not matrix_data:
         raise ValueError("CRUD matrix is empty — run the extraction step first.")
 
+    process_types = process_types or {}
+
     df = pd.DataFrame(matrix_data).T   # rows=processes, cols=entities
 
-    owners    = _compute_entity_owners(df)           # Step 1
-    _          = _initial_clusters(df, owners)        # Step 2 (scaffold only)
-    reordered = _reorder_matrix(df, ea_weights=ea_weights)                   # Step 3
-    clusters  = _extract_blocks(reordered, density_threshold = density_threshold, ea_weights = ea_weights)            # Step 4
-    final = _absorb_pure_readers(clusters=clusters, df=df)
+    owners    = _compute_entity_owners(df)                                           # Step 1
+    _         = _initial_clusters(df, owners, process_types)                         # Step 2 (scaffold only)
+    reordered = _reorder_matrix(df, ea_weights=ea_weights)                           # Step 3
+    clusters  = _extract_blocks(reordered, density_threshold=density_threshold,
+                                ea_weights=ea_weights, process_types=process_types)  # Step 4
+    final     = _absorb_pure_readers(clusters=clusters, df=df,
+                                     process_types=process_types)
+    e2e_span  = _compute_e2e_span(df, final, process_types)
 
-    return BSPResult(clusters=final, reordered_matrix=reordered, entity_owners=owners)
+    return BSPResult(clusters=final, reordered_matrix=reordered,
+                     entity_owners=owners, e2e_span=e2e_span)
 
 
 def print_bsp_result(result: BSPResult) -> None:
@@ -397,6 +519,14 @@ def print_bsp_result(result: BSPResult) -> None:
     print(f"\n {len(result.clusters)} Application Cluster(s) Identified:\n")
     for c in result.clusters:
         print(c.summary())
+
+    if result.e2e_span:
+        print("\n End-to-End Process Coverage:")
+        for proc, ids in result.e2e_span.items():
+            cluster_names = ", ".join(
+                f"Cluster {i}" for i in ids
+            )
+            print(f"   {proc:35s} → {cluster_names}")
 
     print("\n Reordered CRUD Matrix:")
     print(result.reordered_matrix.fillna("·").to_string())

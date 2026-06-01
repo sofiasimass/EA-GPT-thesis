@@ -1,8 +1,20 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Literal, Optional
 import pandas as pd
 
 # --- Structured Output ---
+
+class ProcessSchema(BaseModel):
+    name: str = Field(
+        description="Must match EXACTLY one name from the provided process list. No paraphrasing."
+    )
+    process_type: Literal["atomic", "end_to_end", "ambiguous"] = Field(
+        description=(
+            "atomic = all activities execute within a single system; ACID properties apply across all entities this process touches. "
+            "end_to_end = spans multiple organisational units or departments; different activities may run in different systems. "
+            "ambiguous = cannot be determined with confidence from the available context."
+        )
+    )
 
 class EntitySchema(BaseModel):
     name: str = Field(
@@ -47,6 +59,7 @@ class MatrixResult(BaseModel):
     If you cannot find a natural CRUD operation for an entity, replace it with one
     that does interact with the listed processes.
     """
+    processes: List[ProcessSchema]
     entities: List[EntitySchema]
     operations: List[EntrySchema]
 
@@ -62,8 +75,12 @@ class Process:
 class Matrix:
     def __init__(self):
         self.matrix = {} # { "Process Name": { "Entity Name": "C" } }
+        self.process_types = {}  # { "Process Name": "atomic" | "end_to_end" | "ambiguous" }
         self.process_objects = {} # all Process objects
         self.entity_objects = {}  # all Entity objects
+
+    def set_process_type(self, p_name: str, p_type: str):
+        self.process_types[p_name] = p_type
 
     def add_entry(self, p_name: str, e_name: str, operation: str):
         # Ensure objects exist (even if just created from the LLM string)

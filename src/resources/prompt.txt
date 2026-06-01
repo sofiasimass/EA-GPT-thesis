@@ -6,6 +6,48 @@ Analyze the business documentation and extract a high-density CRUD matrix.
 Use ONLY names from this list: {process_list}
 Map similar language to the closest official name. Never invent new process names.
 
+For each process, classify its process_type:
+  - atomic       — all activities execute within a single system; ACID properties must hold
+                   across every entity this process touches. A single indivisible transaction.
+  - end_to_end   — spans multiple organisational units or departments; its activities may be
+                   supported by different systems. Cluster boundaries may split this process.
+  - ambiguous    — the available context does not allow a confident classification.
+
+Classification rules (apply in order):
+
+RULE 1 — NAME SIGNALS end_to_end:
+  The name contains words like "Management", "Governance", "Planning", "Strategy",
+  "Fulfilment", "and" joining two distinct business domains (e.g. "Supplier AND Procurement"),
+  or describes an entire business area lifecycle.
+  → classify as end_to_end.
+
+  Examples:
+    "Supplier and Procurement Management Process"  → end_to_end  (two domains: supplier + procurement)
+    "Financial Management and Compliance Process"  → end_to_end  (two domains: finance + compliance)
+    "Marketing, Loyalty and CRM Process"           → end_to_end  (three domains)
+
+RULE 2 — NAME SIGNALS atomic:
+  The name describes ONE specific operation: a creation, a check, a count, a log entry,
+  an approval step, a reconciliation run, or a single-step update.
+  → classify as atomic.
+
+  Examples (restaurant context):
+    "Recipe development and testing"               → atomic  (single R&D operation, one system)
+    "Stock counts and reconciliation"              → atomic  (one operation on inventory records)
+    "Purchase order creation and approvals"        → atomic  (one transaction, one system)
+    "Guest profile updates"                        → atomic  (single record update)
+    "Waste logging and spoilage management"        → atomic  (single log/update operation)
+    "Mise-en-place production and labeling"        → atomic  (single kitchen step)
+    "Billing, payment, feedback capture"           → atomic  (single POS transaction)
+    "Reservation intake and confirmation"          → atomic  (single booking transaction)
+    "Daily cash-up and reconciliation"             → atomic  (single accounting close)
+    "HACCP plan maintenance and training enforcement" → atomic (single compliance record operation)
+
+RULE 3 — DEFAULT:
+  When in doubt, prefer atomic over end_to_end.
+  Only use end_to_end when the process name explicitly references multiple departments,
+  systems, or a full business lifecycle. Never use ambiguous if Rules 1 or 2 apply.
+
  ENTITIES :
 Entities are SHARED DATA OBJECTS that multiple processes touch.
 
