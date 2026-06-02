@@ -5,7 +5,7 @@ import json
 import os
 from utils import Matrix, Entity, Process
 from utils import Generator
-from utils.bsp import run_bsp, print_bsp_result
+from utils.bsp import run_bsp
 import fitz
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -83,6 +83,23 @@ def display_clustered_matrix(result, title="BSP Clustered Matrix"):
     plt.show(block=False)
     plt.pause(0.1)
 
+def pick_constraint(inferred_constraints: list[str]) -> str:
+    if inferred_constraints:
+        print("\nSelect a constraint:")
+        for i, c in enumerate(inferred_constraints, 1):
+            print(f"  [{i}] {c}")
+        print(f"  [{len(inferred_constraints) + 1}] other")
+        while True:
+            choice = input("> ").strip()
+            if choice.isdigit():
+                idx = int(choice)
+                if 1 <= idx <= len(inferred_constraints):
+                    return inferred_constraints[idx - 1]
+                if idx == len(inferred_constraints) + 1:
+                    return input("Enter your architectural constraint: ").strip()
+            print(f"Please enter a number between 1 and {len(inferred_constraints) + 1}.")
+    return input("Enter your architectural constraint: ").strip()
+
 def read_inputs():
 
     proc_input = input("Enter processes (comma-separated) OR path to .csv: ").strip()
@@ -139,6 +156,14 @@ async def main():
         print("Error: full_extraction_log.json not found.")
         return
     
+    inferred_constraints = [
+        c["description"] for c in structured_data.get("inferred_constraints", [])
+    ]
+    if inferred_constraints:
+        print(f"\n{len(inferred_constraints)} architectural constraint(s) inferred from the document:")
+        for c in inferred_constraints:
+            print(f"  - {c}")
+
     defined_entities = {e["name"] for e in structured_data.get("entities", [])}
 
     for p in structured_data.get("processes", []):
@@ -185,7 +210,7 @@ async def main():
         if answer in ("yes", "y"):
             break
 
-        constraints = input("Enter your architectural constraints: ").strip()
+        constraints = pick_constraint(inferred_constraints)
         if constraints:
             iteration += 1
             accumulated_user_constraints += f"\n\n[Iteration {iteration}]:\n{constraints}"

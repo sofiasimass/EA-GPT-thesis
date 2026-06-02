@@ -36,13 +36,23 @@ class EntrySchema(BaseModel):
     entity_name: str = Field(
         description="Must match EXACTLY one entity name from the entities list in this response."
     )
-    operation: str = Field(
+    operation: Literal["C", "R", "U", "D"] = Field(
         description=(
             "C = this process is the sole originator of the entity. "
             "R = this process reads the entity to function. "
             "U = this process modifies existing records. "
             "D = this process removes records. "
             "Must be exactly one of: C, R, U, D."
+        )
+    )
+
+class ConstraintSchema(BaseModel):
+    description: str = Field(
+        description=(
+            "A concise architectural constraint inferred from the business documentation. "
+            "Examples: 'Order and Payment must reside in the same service', "
+            "'Authentication is shared across all clusters', "
+            "'Inventory and Procurement must be decoupled'."
         )
     )
 
@@ -62,6 +72,13 @@ class MatrixResult(BaseModel):
     processes: List[ProcessSchema]
     entities: List[EntitySchema]
     operations: List[EntrySchema]
+    inferred_constraints: List[ConstraintSchema] = Field(
+        default_factory=list,
+        description=(
+            "Architectural constraints inferred from the business documentation. "
+            "Identify 3 to 6 constraints that an architect would want to enforce when clustering these processes."
+        )
+    )
 
 
 class Entity:

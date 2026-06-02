@@ -92,3 +92,18 @@ Any process with more than 6 entries is too broad — drop the weakest READs.
   A reporting process produces a report or updates a scorecard (C or U).
   A reconciliation process updates a ledger or transaction record (U).
   There is almost no real business process that only reads and produces nothing.
+
+ ARCHITECTURAL CONSTRAINTS :
+Identify 3 to 6 architectural constraints that are implicit in the business documentation.
+These are rules an architect should enforce when deciding which processes belong together.
+
+Look for signals such as:
+  - Processes that share the same system, team, or organisational unit → should be co-located
+  - Processes that cross department or system boundaries → should be separated
+  - Regulatory or compliance requirements that bind certain processes together
+  - Transactional integrity requirements (e.g. two processes that must always commit together)
+  - Shared data objects that are exclusively owned by a group of tightly related processes
+
+Write each constraint as one plain sentence an architect can act on directly.
+BAD:  "Consider grouping related processes."
+GOOD: "Order creation and payment processing must reside in the same service to guarantee transactional consistency."

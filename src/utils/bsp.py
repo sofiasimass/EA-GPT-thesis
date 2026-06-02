@@ -42,8 +42,8 @@ from pydantic import BaseModel, Field
 #schemas
 
 class EAWeight(BaseModel):
-    item_a: str = Field(description="The name of the first process in the pair")
-    item_b: str = Field(description="The name of the second process in the pair")
+    first_process: str = Field(description="The name of the first process in the pair")
+    second_process: str = Field(description="The name of the second process in the pair")
     weight: float = Field(description="The bias value between -0.5 and 0.5")
     reasoning: str = Field(description="Architectural justification for this weight")
 
@@ -136,7 +136,7 @@ def _affinity(df: pd.DataFrame, a: str, b: str, axis: str, ea_weights: Dict[tupl
     shared_normalised = shared / max_possible if max_possible else 0
 
     # Bias arquitectural: somado directamente — weights em [-0.5, 0.5] têm
-    # impacto proporcional sobre uma afinidade normalizada em [0, 1].
+    # impacto proporcional sobre uma afinidade entre [0, 1].
     pair = tuple(sorted([a, b]))
     weight = ea_weights.get(pair, 0)
 
@@ -189,44 +189,6 @@ def _compute_entity_owners(df: pd.DataFrame) -> Dict[str, str]:
     return owners
 
 
-def _initial_clusters(df: pd.DataFrame, owners: Dict[str, str], process_types: Dict[str, str] = None) -> List[Cluster]:
-    """
-    Group entities by owning process → one cluster per owning process.
-    - Atomic owner: all owned entities in one cluster (ACID co-location).
-    - E2E owner: each owned entity seeds its own independent cluster.
-    Non-owning processes are assigned to the cluster they interact with most.
-    """
-    process_types = process_types or {}
-    owner_to_ents: Dict[str, List[str]] = {}
-    for entity, owner in owners.items():
-        owner_to_ents.setdefault(owner, []).append(entity)
-
-    clusters: List[Cluster] = []
-    cid = 1
-    for owner, ents in owner_to_ents.items():
-        if process_types.get(owner) == "end_to_end":
-            # Each entity owned by an E2E process seeds its own cluster
-            for ent in ents:
-                clusters.append(Cluster(id=cid, name=ent, processes=[owner], entities=[ent]))
-                cid += 1
-        else:
-            clusters.append(Cluster(id=cid, name=_cluster_name(ents),
-                                    processes=[owner], entities=list(ents)))
-            cid += 1
-
-    owning = {c.processes[0] for c in clusters}
-    for proc in df.index:
-        if proc in owning:
-            continue
-        best_c, best_n = clusters[0], -1
-        for c in clusters:
-            n = sum(1 for e in c.entities if _op_weight(df.at[proc, e]) > 0)
-            if n > best_n:
-                best_n, best_c = n, c
-        best_c.processes.append(proc)
-
-    return clusters
-
 
 def _reorder_matrix(df: pd.DataFrame, ea_weights: Dict[tuple, float] = None) -> pd.DataFrame:
     """
@@ -246,33 +208,7 @@ def _reorder_matrix(df: pd.DataFrame, ea_weights: Dict[tuple, float] = None) -> 
     return df.loc[new_procs, new_ents]
 
 def _extract_blocks(df: pd.DataFrame, density_threshold: float = 0.5, ea_weights: Dict[tuple, float] = None, process_types: Dict[str, str] = None) -> List[Cluster]:
-    """
-    Scan the reordered matrix for contiguous dense rectangular blocks (Step 4).
 
-    Overview:
-      1. Group processes: scan rows top-to-bottom; add a process to the current
-         group if its average weighted Jaccard similarity to existing members
-         exceeds density_threshold, otherwise start a new group.
-      2. Group entities: same scan left-to-right on columns.
-      3. Co-location constraint (atomic processes only): if an atomic process
-         touches entities that Jaccard placed in different groups, those groups
-         are forcibly merged via union-find. This enforces ACID — an atomic
-         process cannot be split across two systems.
-         E2E processes are exempt: their entities may legitimately land in
-         different clusters (different departments → different systems).
-      4. Pair process groups to entity groups by total op-weight score.
-
-    Weighted Jaccard used for grouping:
-        jaccard(P1, P2) = Σ min(w_P1(e), w_P2(e)) / Σ max(w_P1(e), w_P2(e))
-
-      This is the continuous analogue of classic Jaccard:
-        C(4) & C(4) → 4/4 = 1.00  (both create — full overlap)
-        C(4) & R(1) → 1/4 = 0.25  (creator vs reader — penalised asymmetry)
-        R(1) & R(1) → 1/1 = 1.00  (same read pattern — full overlap)
-      Penalises asymmetric commitment; R-R scores identically to C-C because
-      what matters is that both processes have the exact same relationship to
-      the entity, not whether that relationship is read or write.
-    """
     ea_weights   = ea_weights or {}
     process_types = process_types or {}
     procs    = list(df.index)
@@ -493,8 +429,7 @@ def run_bsp(matrix_data: Dict[str, Dict[str, str]], density_threshold: float = 0
     df = pd.DataFrame(matrix_data).T   # rows=processes, cols=entities
 
     owners    = _compute_entity_owners(df)                                           # Step 1
-    _         = _initial_clusters(df, owners, process_types)                         # Step 2 (scaffold only)
-    reordered = _reorder_matrix(df, ea_weights=ea_weights)                           # Step 3
+    reordered = _reorder_matrix(df, ea_weights=ea_weights)                           # Step 2
     clusters  = _extract_blocks(reordered, density_threshold=density_threshold,
                                 ea_weights=ea_weights, process_types=process_types)  # Step 4
     final     = _absorb_pure_readers(clusters=clusters, df=df,
@@ -503,31 +438,3 @@ def run_bsp(matrix_data: Dict[str, Dict[str, str]], density_threshold: float = 0
 
     return BSPResult(clusters=final, reordered_matrix=reordered,
                      entity_owners=owners, e2e_span=e2e_span)
-
-
-def print_bsp_result(result: BSPResult) -> None:
-    """Pretty-print BSP results to stdout."""
-    sep = "═" * 62
-    print(f"\n{sep}")
-    print("  BSP CLUSTERING RESULT")
-    print(sep)
-
-    print("\nEntity Ownership  (C > U > R > D priority):")
-    for entity, owner in result.entity_owners.items():
-        print(f"   {entity:35s} ← {owner}")
-
-    print(f"\n {len(result.clusters)} Application Cluster(s) Identified:\n")
-    for c in result.clusters:
-        print(c.summary())
-
-    if result.e2e_span:
-        print("\n End-to-End Process Coverage:")
-        for proc, ids in result.e2e_span.items():
-            cluster_names = ", ".join(
-                f"Cluster {i}" for i in ids
-            )
-            print(f"   {proc:35s} → {cluster_names}")
-
-    print("\n Reordered CRUD Matrix:")
-    print(result.reordered_matrix.fillna("·").to_string())
-    print(f"{sep}\n")

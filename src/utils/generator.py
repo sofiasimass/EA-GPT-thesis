@@ -20,7 +20,7 @@ class Generator:
     async def _compute_ea_weights(self, current_clusters: List[Cluster], ea_principles: str, user_constraints: str = ""):
         """
         Analyzes the current BSP result and returns a mapping of
-        (item_a, item_b): weight to refine the next iteration.
+        (first_process, second_process): weight to refine the next iteration.
 
         Keys are always sorted tuples of the original process names so they
         match the lookup keys built inside bsp.py's _affinity / _extract_blocks.
@@ -50,7 +50,7 @@ class Generator:
             CURRENT DRAFT CLUSTERS:
             {cluster_summary}
 
-            EXACT PROCESS NAMES — copy verbatim into item_a / item_b:
+            EXACT PROCESS NAMES — copy verbatim into first_process / second_process:
             {exact_names_list}
 
             INSTRUCTIONS:
@@ -78,7 +78,7 @@ class Generator:
             RULES:
             - User constraint pairs ALWAYS take precedence over EA principle pairs.
             - Use the full weight range — do not default everything to +0.5.
-            - item_a and item_b MUST be copied EXACTLY from EXACT PROCESS NAMES — no paraphrasing.
+            - first_process and second_process MUST be copied EXACTLY from EXACT PROCESS NAMES — no paraphrasing.
         """)
 
         weight_llm = self.llm.with_structured_output(EAWeightResult)
@@ -96,15 +96,15 @@ class Generator:
         skipped = []
         for bias in response.biases:
             # Normalize both names to match against canonical map.
-            norm_a = bias.item_a.strip().lower()
-            norm_b = bias.item_b.strip().lower()
+            norm_a = bias.first_process.strip().lower()
+            norm_b = bias.second_process.strip().lower()
 
             resolved_a = canonical.get(norm_a)
             resolved_b = canonical.get(norm_b)
 
             if resolved_a is None or resolved_b is None:
                 # LLM hallucinated a name — skip so it doesn't silently zero-out.
-                skipped.append((bias.item_a, bias.item_b))
+                skipped.append((bias.first_process, bias.second_process))
                 continue
 
             # Keys must be sorted so (A,B) == (B,A) everywhere in bsp.py.
