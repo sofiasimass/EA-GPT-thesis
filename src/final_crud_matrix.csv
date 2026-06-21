@@ -1,13 +1,13 @@
-Process,Campaign,Event Plan,Feedback Record,Financial Statement,Guest Profile,HACCP Record,Inventory Record,Invoice,Menu,Order,Recipe,Reservation,Strategic Plan,Supplier Profile,Waste Record
-Dine-In Service Delivery and Guest Experience Process,,,C,,R,,,,,C,,R,,,
-Events and B2B Process,,C,,,R,,,C,,R,,,,,
-Financial Management and Compliance Process,,,,C,,R,,R,,R,,,,,
-Inventory and Storage Management Process,,,,,,,U,,,,R,,,R,C
-Kitchen Production and Service Preparation Process,,,,,,U,R,,,,R,,,,U
-"Marketing, Loyalty and CRM Process",C,,R,,R,,,,,,,R,,,
-"Menu, Product and Experience Design Process",,,R,,,,,,C,,C,,,R,
-Premium Take-away and Delivery Fulfillment Process,,,R,,R,,R,,,C,,,,,
-"Quality, Food Safety and Risk Management Process",,,R,,,C,,,,,,,,R,R
-"Reservation, Table and Capacity Management Process",,R,R,,R,,,,,,,C,,,
-Strategic Planning and Governance Process,R,,,R,,,,,,,,,C,R,
-Supplier and Procurement Management Process,,,,,,,R,C,,,,,,C,R
+Process,Compliance Log,Customer Profile,Event Plan,Feedback Record,Financial Statement,Inventory Record,Invoice,Menu,Order,Recipe,Reservation,Strategic Plan,Supplier Profile
+Dine-In Service Delivery and Guest Experience Process,,R,,C,,,,,C,,R,,
+Events and B2B Process,,R,C,,,,C,,R,,,,
+Financial Management and Compliance Process,R,,,,C,,U,,R,,,,
+Inventory and Storage Management Process,R,,,,,U,,,,R,,,R
+Kitchen Production and Service Preparation Process,R,,,,,R,,,C,R,,,
+"Marketing, Loyalty and CRM Process",,U,,R,,,,,R,,R,,
+"Menu, Product and Experience Design Process",,,,,,R,,C,,C,,,R
+Premium Take-away and Delivery Fulfillment Process,,R,,R,,R,,,C,,,,
+"Quality, Food Safety and Risk Management Process",U,,,,,R,,,,R,,,R
+"Reservation, Table and Capacity Management Process",,R,,R,,,,,R,,C,,
+Strategic Planning and Governance Process,R,,,,R,,,,,,,C,R
+Supplier and Procurement Management Process,R,,,,,R,C,,,,,,C

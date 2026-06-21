@@ -13,7 +13,15 @@ import textwrap
 
 def export_clustered_excel(result, filename):
     df = result.reordered_matrix.fillna("")
-    
+
+    # Re-sort rows and columns by cluster membership so each cluster's
+    # processes and entities are contiguous, producing a clean block-diagonal.
+    proc_order = [p for c in result.clusters for p in c.processes if p in df.index]
+    ent_order  = [e for c in result.clusters for e in c.entities  if e in df.columns]
+    proc_order += [p for p in df.index   if p not in proc_order]
+    ent_order  += [e for e in df.columns if e not in ent_order]
+    df = df.loc[proc_order, ent_order]
+
     # Create a writer object
     with pd.ExcelWriter(filename, engine='openpyxl') as writer:
         df.to_excel(writer, sheet_name='Clustered Matrix')
@@ -41,6 +49,13 @@ def export_clustered_excel(result, filename):
 
 def display_clustered_matrix(result, title="BSP Clustered Matrix"):
     df = result.reordered_matrix.fillna("")
+
+    proc_order = [p for c in result.clusters for p in c.processes if p in df.index]
+    ent_order  = [e for c in result.clusters for e in c.entities  if e in df.columns]
+    proc_order += [p for p in df.index   if p not in proc_order]
+    ent_order  += [e for e in df.columns if e not in ent_order]
+    df = df.loc[proc_order, ent_order]
+
     colors = ["#E1F5FE", "#F1F8E9", "#FFFDE7", "#F3E5F5", "#E8EAF6", "#E0F2F1"]
 
     cell_colors = [["white"] * len(df.columns) for _ in df.index]
@@ -201,6 +216,7 @@ async def main():
 
     accumulated_user_constraints = ""
     accumulated_weights = {}
+    accumulated_reasoning = {}
     current_bsp = initial_bsp
     iteration = 0
     bsp_iterations = []
@@ -216,12 +232,13 @@ async def main():
             accumulated_user_constraints += f"\n\n[Iteration {iteration}]:\n{constraints}"
 
         print("\nAnalysing constraints and computing EA weights...")
-        new_weights = await ai._compute_ea_weights(
+        new_weights, new_reasoning = await ai._compute_ea_weights(
             current_bsp.clusters,
             baseline_principles,
             accumulated_user_constraints
         )
         accumulated_weights.update(new_weights)
+        accumulated_reasoning.update(new_reasoning)
 
         current_bsp = run_bsp(matrix.matrix, ea_weights=accumulated_weights, process_types=matrix.process_types)
 
@@ -233,12 +250,43 @@ async def main():
         bsp_iterations.append({
             "iteration": iteration,
             "user_constraint": constraints,
-            "ea_weights": {str(k): v for k, v in accumulated_weights.items()},
+            "ea_weights": {
+                str(k): {"weight": v, "reasoning": new_reasoning.get(k, "")}
+                for k, v in new_weights.items()
+            },
             "clusters": [c.to_dict() for c in current_bsp.clusters],
             "entity_owners": current_bsp.entity_owners,
         })
 
     final_bsp = current_bsp
+
+    # Build a human-readable weight reasoning trail for the LLM
+    weight_reasoning_lines = []
+    for k, reasoning in accumulated_reasoning.items():
+        weight = accumulated_weights.get(k, 0)
+        weight_reasoning_lines.append(f"  {k[0]} <-> {k[1]}: {weight:+.2f} — {reasoning}")
+    weight_reasoning_history = "\n".join(weight_reasoning_lines)
+
+    print("\nGenerating system descriptions and market comparisons...")
+    systems_analysis = await ai.describe_systems(
+        final_clusters=final_bsp.clusters,
+        user_constraints_history=accumulated_user_constraints,
+        weight_reasoning_history=weight_reasoning_history,
+    )
+
+    print("\n" + "=" * 60)
+    print("FINAL SYSTEMS ANALYSIS")
+    print("=" * 60)
+    for s in systems_analysis.systems:
+        print(f"\nCluster {s.cluster_id}: {s.suggested_name}")
+        print(f"  {s.description}")
+        print(f"  Recommendation: {s.build_or_buy}")
+        print(f"  {s.build_or_buy_rationale}")
+        if s.market_options:
+            print("  Market options:")
+            for opt in s.market_options:
+                print(f"    - {opt.name}: {opt.fit_rationale}")
+    print("=" * 60)
 
     with open("full_extraction_log.json", "w") as f:
         json.dump({
@@ -251,12 +299,29 @@ async def main():
             "final_bsp": {
                 "clusters": [c.to_dict() for c in final_bsp.clusters],
                 "entity_owners": final_bsp.entity_owners,
-                "ea_weights": {str(k): v for k, v in accumulated_weights.items()},
+                "ea_weights": {
+                    str(k): {"weight": v, "reasoning": accumulated_reasoning.get(k, "")}
+                    for k, v in accumulated_weights.items()
+                },
                 "user_constraints": accumulated_user_constraints.strip(),
-            }
+            },
+            "systems_analysis": [
+                {
+                    "cluster_id": s.cluster_id,
+                    "suggested_name": s.suggested_name,
+                    "description": s.description,
+                    "build_or_buy": s.build_or_buy,
+                    "build_or_buy_rationale": s.build_or_buy_rationale,
+                    "market_options": [
+                        {"name": o.name, "fit_rationale": o.fit_rationale}
+                        for o in s.market_options
+                    ],
+                }
+                for s in systems_analysis.systems
+            ],
         }, f, indent=4)
 
-    print("Full extraction log updated with clusters!")
+    print("Full extraction log updated with clusters and systems analysis!")
 
 if __name__ == "__main__":
     asyncio.run(main())
