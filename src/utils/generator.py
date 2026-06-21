@@ -8,7 +8,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from typing import List
 
-from .bsp import Cluster, EAWeight, EAWeightResult
+from .bsp import Cluster, EAWeight, EAWeightResult, SystemsAnalysisResult, MarketOption
 from .matrix import MatrixResult #output schema
 
 class Generator:
@@ -55,20 +55,30 @@ class Generator:
 
             INSTRUCTIONS:
 
-            STEP 1 — Parse USER CONSTRAINTS first.
-            For each constraint that names a specific application or system covering multiple domains:
-              a) List every process from EXACT PROCESS NAMES that belongs to each domain.
+            STEP 1 — Parse USER CONSTRAINTS first. There are two types — handle both:
+
+            TYPE A — Application/system constraints (e.g. "AppX manages both suppliers and stock"):
+              a) Identify every process from EXACT PROCESS NAMES that belongs to each domain named.
               b) For each cross-domain pair that belongs to the same named application, assign a weight
                  proportional to how tightly the constraint binds them — use the full range 0 to +0.5.
                  Reserve +0.5 only for pairs that are clearly core to the application's purpose.
-                 Use smaller values for processes that only loosely relate to the application.
               c) Do NOT assign +0.5 to every pair — differentiate by strength of association.
               d) Do NOT skip cross-cluster pairs. Those are the most important to fix.
 
-            Example: if the user says "AppX manages both suppliers and stock":
-              - Supplier processes: [P1, P2]
-              - Stock processes:    [P3, P4]
-              - Core pairs get higher weights; tangentially related processes get lower weights.
+            TYPE B — Operational/transactional constraints (e.g. "operation X and operation Y must reside in the same service"):
+              a) Identify the operation(s) mentioned (e.g. "order creation", "payment processing").
+              b) From EXACT PROCESS NAMES, list ALL processes that perform each operation — not just the
+                 primary owner, but every process that executes that operation in any context
+                 (e.g. dine-in order creation, take-away order creation, etc.).
+              c) For every pair where one process performs operation X and the other performs operation Y,
+                 assign a high positive weight (+0.4 to +0.5). These pairs are the most critical to co-locate.
+              d) Do NOT skip cross-cluster pairs — those are exactly the ones the constraint is meant to fix.
+
+            Example TYPE B: if the user says "order creation and payment processing must be in the same service":
+              - Order creation processes: [Kitchen Production, Dine-In Service, Premium Take-away]
+              - Payment processing processes: [Financial Management]
+              - Assign high weights (+0.4 to +0.5) to ALL pairs: (Kitchen Production, Financial Management),
+                (Dine-In Service, Financial Management), (Premium Take-away, Financial Management).
 
             STEP 2 — Apply EA PRINCIPLES to pairs not covered by STEP 1.
               - Processes clustered together that violate principles → NEGATIVE weight (down to -0.5).
@@ -93,6 +103,7 @@ class Generator:
         })
 
         weight_map = {}
+        reasoning_map = {}
         skipped = []
         for bias in response.biases:
             # Normalize both names to match against canonical map.
@@ -110,6 +121,7 @@ class Generator:
             # Keys must be sorted so (A,B) == (B,A) everywhere in bsp.py.
             pair = tuple(sorted([resolved_a, resolved_b]))
             weight_map[pair] = bias.weight
+            reasoning_map[pair] = bias.reasoning
             print(f"  EA Bias: {pair} -> {bias.weight:+.2f}  ({bias.reasoning})")
 
         if skipped:
@@ -121,7 +133,64 @@ class Generator:
         else:
             print(f"  {len(weight_map)} EA weight(s) applied successfully.")
 
-        return weight_map
+        return weight_map, reasoning_map
+
+    async def describe_systems(
+        self,
+        final_clusters: List[Cluster],
+        user_constraints_history: str,
+        weight_reasoning_history: str,
+    ) -> SystemsAnalysisResult:
+        """
+        Generates a business description and market alternative suggestions for each
+        final BSP cluster. Reads the full decision trail (user constraints across all
+        iterations and the reasoning behind each EA weight change) so the LLM
+        understands *why* the systems ended up as they did, not just what they contain.
+        """
+        cluster_details = "\n\n".join(
+            f"Cluster {c.id}:\n"
+            f"  Processes : {', '.join(c.processes) or '—'}\n"
+            f"  Entities  : {', '.join(c.entities) or '—'}"
+            for c in final_clusters
+        )
+
+        prompt = ChatPromptTemplate.from_template("""
+You are a Senior Enterprise Architect producing a final assessment of a BSP (Business Systems Planning) clustering exercise.
+
+FINAL CLUSTERS:
+{cluster_details}
+
+USER CONSTRAINTS APPLIED ACROSS ITERATIONS (in order):
+{user_constraints_history}
+
+EA WEIGHT REASONING (why pairs were boosted or penalised at each iteration):
+{weight_reasoning_history}
+
+TASK:
+For each cluster above, produce:
+1. suggested_name          — a short, business-meaningful system name (e.g. "Customer Relationship Management").
+2. description             — 2–3 sentences explaining what this system is responsible for, grounded in its processes, entities, and the architectural decisions made during the exercise.
+3. build_or_buy            — one of: "Build", "Buy", or "Hybrid".
+   - Buy    : the system maps cleanly onto an existing commercial product category.
+   - Build  : the system's logic is too specific or differentiated to be well served by off-the-shelf software.
+   - Hybrid : a commercial product covers the core but meaningful customisation or extension is required.
+4. build_or_buy_rationale  — 1–2 sentences justifying the decision based on this system's specificity and market coverage.
+5. market_options          — up to 3 real, widely-adopted commercial products relevant to this system.
+   - Only include products if recommendation is Buy or Hybrid.
+   - Leave the list empty if recommendation is Build.
+   - Do not invent product names. Use real products only (e.g. Salesforce, SAP S/4HANA, Workday, ServiceNow, Microsoft Dynamics 365, Oracle NetSuite, etc.).
+
+Rules:
+- Base naming and description on the cluster content AND the reasoning trail — constraints and weight adjustments reveal design intent that process/entity names alone may not capture.
+- Output one SystemDescription per cluster, using the cluster's numeric id as cluster_id.
+        """)
+
+        systems_llm = self.llm.with_structured_output(SystemsAnalysisResult)
+        return await (prompt | systems_llm).ainvoke({
+            "cluster_details": cluster_details,
+            "user_constraints_history": user_constraints_history.strip() if user_constraints_history.strip() else "(no iterations — initial clustering accepted)",
+            "weight_reasoning_history": weight_reasoning_history.strip() if weight_reasoning_history.strip() else "(no weight adjustments made)",
+        })
 
     async def extract(self, context: str, process_list: list):
         prompt_path = os.path.join(os.path.dirname(__file__), "..", "resources", "prompt.txt")

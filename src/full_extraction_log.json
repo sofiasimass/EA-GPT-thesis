@@ -1,0 +1,984 @@
+{
+    "extraction": {
+        "processes": [
+            {
+                "name": "Strategic Planning and Governance Process",
+                "process_type": "end_to_end"
+            },
+            {
+                "name": "Menu, Product and Experience Design Process",
+                "process_type": "end_to_end"
+            },
+            {
+                "name": "Supplier and Procurement Management Process",
+                "process_type": "end_to_end"
+            },
+            {
+                "name": "Inventory and Storage Management Process",
+                "process_type": "end_to_end"
+            },
+            {
+                "name": "Kitchen Production and Service Preparation Process",
+                "process_type": "end_to_end"
+            },
+            {
+                "name": "Reservation, Table and Capacity Management Process",
+                "process_type": "end_to_end"
+            },
+            {
+                "name": "Dine-In Service Delivery and Guest Experience Process",
+                "process_type": "end_to_end"
+            },
+            {
+                "name": "Premium Take-away and Delivery Fulfillment Process",
+                "process_type": "end_to_end"
+            },
+            {
+                "name": "Events and B2B Process",
+                "process_type": "end_to_end"
+            },
+            {
+                "name": "Marketing, Loyalty and CRM Process",
+                "process_type": "end_to_end"
+            },
+            {
+                "name": "Financial Management and Compliance Process",
+                "process_type": "end_to_end"
+            },
+            {
+                "name": "Quality, Food Safety and Risk Management Process",
+                "process_type": "end_to_end"
+            }
+        ],
+        "entities": [
+            {
+                "name": "Strategic Plan",
+                "description": "Contains strategic objectives, policies, and performance targets for governance and investment decisions."
+            },
+            {
+                "name": "Menu",
+                "description": "Version-controlled menus for dine-in, take-away, and events, ensuring brand coherence and profitability."
+            },
+            {
+                "name": "Supplier Profile",
+                "description": "Information about suppliers, including contracts, certifications, and performance metrics."
+            },
+            {
+                "name": "Inventory Record",
+                "description": "Tracks stock levels, expiry dates, and storage constraints to ensure availability and traceability."
+            },
+            {
+                "name": "Recipe",
+                "description": "Standard recipe specifications for consistent production and costing."
+            },
+            {
+                "name": "Reservation",
+                "description": "Booking requests and confirmations, including deposits and seating constraints."
+            },
+            {
+                "name": "Guest Profile",
+                "description": "Information about guests, including preferences, dietary restrictions, and loyalty data."
+            },
+            {
+                "name": "Order",
+                "description": "Transactions representing guest consumption for dine-in, take-away, or events."
+            },
+            {
+                "name": "Invoice",
+                "description": "Supplier and client invoices for financial transactions and compliance."
+            },
+            {
+                "name": "HACCP Record",
+                "description": "Evidence records for food safety and operational compliance."
+            },
+            {
+                "name": "Event Plan",
+                "description": "Structured record of private dining and corporate events, including menus and logistics."
+            },
+            {
+                "name": "Campaign",
+                "description": "Marketing and loyalty campaigns aimed at customer acquisition and retention."
+            },
+            {
+                "name": "Financial Statement",
+                "description": "Reports on financial transactions, unit profitability, and compliance evidence."
+            },
+            {
+                "name": "Waste Record",
+                "description": "Logged waste to support sustainability and cost control."
+            },
+            {
+                "name": "Feedback Record",
+                "description": "Guest feedback collected via surveys or direct interactions."
+            }
+        ],
+        "operations": [
+            {
+                "process_name": "Strategic Planning and Governance Process",
+                "entity_name": "Strategic Plan",
+                "operation": "C"
+            },
+            {
+                "process_name": "Strategic Planning and Governance Process",
+                "entity_name": "Financial Statement",
+                "operation": "R"
+            },
+            {
+                "process_name": "Strategic Planning and Governance Process",
+                "entity_name": "Supplier Profile",
+                "operation": "R"
+            },
+            {
+                "process_name": "Strategic Planning and Governance Process",
+                "entity_name": "Campaign",
+                "operation": "R"
+            },
+            {
+                "process_name": "Menu, Product and Experience Design Process",
+                "entity_name": "Menu",
+                "operation": "C"
+            },
+            {
+                "process_name": "Menu, Product and Experience Design Process",
+                "entity_name": "Recipe",
+                "operation": "C"
+            },
+            {
+                "process_name": "Menu, Product and Experience Design Process",
+                "entity_name": "Supplier Profile",
+                "operation": "R"
+            },
+            {
+                "process_name": "Menu, Product and Experience Design Process",
+                "entity_name": "Feedback Record",
+                "operation": "R"
+            },
+            {
+                "process_name": "Supplier and Procurement Management Process",
+                "entity_name": "Supplier Profile",
+                "operation": "C"
+            },
+            {
+                "process_name": "Supplier and Procurement Management Process",
+                "entity_name": "Inventory Record",
+                "operation": "R"
+            },
+            {
+                "process_name": "Supplier and Procurement Management Process",
+                "entity_name": "Invoice",
+                "operation": "C"
+            },
+            {
+                "process_name": "Supplier and Procurement Management Process",
+                "entity_name": "Waste Record",
+                "operation": "R"
+            },
+            {
+                "process_name": "Inventory and Storage Management Process",
+                "entity_name": "Inventory Record",
+                "operation": "U"
+            },
+            {
+                "process_name": "Inventory and Storage Management Process",
+                "entity_name": "Waste Record",
+                "operation": "C"
+            },
+            {
+                "process_name": "Inventory and Storage Management Process",
+                "entity_name": "Recipe",
+                "operation": "R"
+            },
+            {
+                "process_name": "Inventory and Storage Management Process",
+                "entity_name": "Supplier Profile",
+                "operation": "R"
+            },
+            {
+                "process_name": "Kitchen Production and Service Preparation Process",
+                "entity_name": "Recipe",
+                "operation": "R"
+            },
+            {
+                "process_name": "Kitchen Production and Service Preparation Process",
+                "entity_name": "Inventory Record",
+                "operation": "R"
+            },
+            {
+                "process_name": "Kitchen Production and Service Preparation Process",
+                "entity_name": "Waste Record",
+                "operation": "U"
+            },
+            {
+                "process_name": "Kitchen Production and Service Preparation Process",
+                "entity_name": "HACCP Record",
+                "operation": "U"
+            },
+            {
+                "process_name": "Reservation, Table and Capacity Management Process",
+                "entity_name": "Reservation",
+                "operation": "C"
+            },
+            {
+                "process_name": "Reservation, Table and Capacity Management Process",
+                "entity_name": "Guest Profile",
+                "operation": "R"
+            },
+            {
+                "process_name": "Reservation, Table and Capacity Management Process",
+                "entity_name": "Event Plan",
+                "operation": "R"
+            },
+            {
+                "process_name": "Reservation, Table and Capacity Management Process",
+                "entity_name": "Feedback Record",
+                "operation": "R"
+            },
+            {
+                "process_name": "Dine-In Service Delivery and Guest Experience Process",
+                "entity_name": "Order",
+                "operation": "C"
+            },
+            {
+                "process_name": "Dine-In Service Delivery and Guest Experience Process",
+                "entity_name": "Guest Profile",
+                "operation": "R"
+            },
+            {
+                "process_name": "Dine-In Service Delivery and Guest Experience Process",
+                "entity_name": "Feedback Record",
+                "operation": "C"
+            },
+            {
+                "process_name": "Dine-In Service Delivery and Guest Experience Process",
+                "entity_name": "Reservation",
+                "operation": "R"
+            },
+            {
+                "process_name": "Premium Take-away and Delivery Fulfillment Process",
+                "entity_name": "Order",
+                "operation": "C"
+            },
+            {
+                "process_name": "Premium Take-away and Delivery Fulfillment Process",
+                "entity_name": "Inventory Record",
+                "operation": "R"
+            },
+            {
+                "process_name": "Premium Take-away and Delivery Fulfillment Process",
+                "entity_name": "Guest Profile",
+                "operation": "R"
+            },
+            {
+                "process_name": "Premium Take-away and Delivery Fulfillment Process",
+                "entity_name": "Feedback Record",
+                "operation": "R"
+            },
+            {
+                "process_name": "Events and B2B Process",
+                "entity_name": "Event Plan",
+                "operation": "C"
+            },
+            {
+                "process_name": "Events and B2B Process",
+                "entity_name": "Invoice",
+                "operation": "C"
+            },
+            {
+                "process_name": "Events and B2B Process",
+                "entity_name": "Guest Profile",
+                "operation": "R"
+            },
+            {
+                "process_name": "Events and B2B Process",
+                "entity_name": "Order",
+                "operation": "R"
+            },
+            {
+                "process_name": "Marketing, Loyalty and CRM Process",
+                "entity_name": "Campaign",
+                "operation": "C"
+            },
+            {
+                "process_name": "Marketing, Loyalty and CRM Process",
+                "entity_name": "Guest Profile",
+                "operation": "R"
+            },
+            {
+                "process_name": "Marketing, Loyalty and CRM Process",
+                "entity_name": "Feedback Record",
+                "operation": "R"
+            },
+            {
+                "process_name": "Marketing, Loyalty and CRM Process",
+                "entity_name": "Reservation",
+                "operation": "R"
+            },
+            {
+                "process_name": "Financial Management and Compliance Process",
+                "entity_name": "Invoice",
+                "operation": "R"
+            },
+            {
+                "process_name": "Financial Management and Compliance Process",
+                "entity_name": "Financial Statement",
+                "operation": "C"
+            },
+            {
+                "process_name": "Financial Management and Compliance Process",
+                "entity_name": "Order",
+                "operation": "R"
+            },
+            {
+                "process_name": "Financial Management and Compliance Process",
+                "entity_name": "HACCP Record",
+                "operation": "R"
+            },
+            {
+                "process_name": "Quality, Food Safety and Risk Management Process",
+                "entity_name": "HACCP Record",
+                "operation": "C"
+            },
+            {
+                "process_name": "Quality, Food Safety and Risk Management Process",
+                "entity_name": "Waste Record",
+                "operation": "R"
+            },
+            {
+                "process_name": "Quality, Food Safety and Risk Management Process",
+                "entity_name": "Supplier Profile",
+                "operation": "R"
+            },
+            {
+                "process_name": "Quality, Food Safety and Risk Management Process",
+                "entity_name": "Feedback Record",
+                "operation": "R"
+            }
+        ],
+        "inferred_constraints": [
+            {
+                "description": "Order creation and payment processing must reside in the same service to guarantee transactional consistency."
+            },
+            {
+                "description": "Supplier and Procurement Management must be decoupled from Inventory and Storage Management to allow flexibility in sourcing."
+            },
+            {
+                "description": "Menu, Product and Experience Design Process should be closely integrated with Marketing, Loyalty and CRM Process to ensure brand coherence."
+            },
+            {
+                "description": "Quality, Food Safety and Risk Management Process must be tightly coupled with Kitchen Production and Service Preparation Process to maintain compliance."
+            },
+            {
+                "description": "Reservation, Table and Capacity Management Process should be integrated with Dine-In Service Delivery and Guest Experience Process for seamless guest handling."
+            }
+        ]
+    },
+    "initial_bsp": {
+        "clusters": [
+            {
+                "id": 1,
+                "name": "Order / Feedback Record",
+                "processes": [
+                    "Premium Take-away and Delivery Fulfillment Process",
+                    "Dine-In Service Delivery and Guest Experience Process"
+                ],
+                "entities": [
+                    "Order",
+                    "Feedback Record",
+                    "Guest Profile"
+                ]
+            },
+            {
+                "id": 2,
+                "name": "Campaign",
+                "processes": [
+                    "Marketing, Loyalty and CRM Process"
+                ],
+                "entities": [
+                    "Campaign"
+                ]
+            },
+            {
+                "id": 3,
+                "name": "Reservation",
+                "processes": [
+                    "Reservation, Table and Capacity Management Process"
+                ],
+                "entities": [
+                    "Reservation"
+                ]
+            },
+            {
+                "id": 4,
+                "name": "Event Plan",
+                "processes": [
+                    "Events and B2B Process"
+                ],
+                "entities": [
+                    "Event Plan"
+                ]
+            },
+            {
+                "id": 5,
+                "name": "Invoice / Supplier Profile",
+                "processes": [
+                    "Supplier and Procurement Management Process"
+                ],
+                "entities": [
+                    "Invoice",
+                    "Supplier Profile"
+                ]
+            },
+            {
+                "id": 6,
+                "name": "Waste Record / Inventory Record",
+                "processes": [
+                    "Inventory and Storage Management Process",
+                    "Kitchen Production and Service Preparation Process"
+                ],
+                "entities": [
+                    "Waste Record",
+                    "Inventory Record"
+                ]
+            },
+            {
+                "id": 8,
+                "name": "HACCP Record",
+                "processes": [
+                    "Quality, Food Safety and Risk Management Process"
+                ],
+                "entities": [
+                    "HACCP Record"
+                ]
+            },
+            {
+                "id": 9,
+                "name": "Recipe / Menu",
+                "processes": [
+                    "Menu, Product and Experience Design Process"
+                ],
+                "entities": [
+                    "Recipe",
+                    "Menu"
+                ]
+            },
+            {
+                "id": 10,
+                "name": "Strategic Plan",
+                "processes": [
+                    "Strategic Planning and Governance Process"
+                ],
+                "entities": [
+                    "Strategic Plan"
+                ]
+            },
+            {
+                "id": 11,
+                "name": "Financial Statement",
+                "processes": [
+                    "Financial Management and Compliance Process"
+                ],
+                "entities": [
+                    "Financial Statement"
+                ]
+            }
+        ],
+        "entity_owners": {
+            "Order": "Premium Take-away and Delivery Fulfillment Process",
+            "Feedback Record": "Dine-In Service Delivery and Guest Experience Process",
+            "Guest Profile": "Premium Take-away and Delivery Fulfillment Process",
+            "Campaign": "Marketing, Loyalty and CRM Process",
+            "Reservation": "Reservation, Table and Capacity Management Process",
+            "Event Plan": "Events and B2B Process",
+            "Invoice": "Supplier and Procurement Management Process",
+            "Supplier Profile": "Supplier and Procurement Management Process",
+            "Waste Record": "Inventory and Storage Management Process",
+            "Inventory Record": "Inventory and Storage Management Process",
+            "HACCP Record": "Quality, Food Safety and Risk Management Process",
+            "Recipe": "Menu, Product and Experience Design Process",
+            "Menu": "Menu, Product and Experience Design Process",
+            "Strategic Plan": "Strategic Planning and Governance Process",
+            "Financial Statement": "Financial Management and Compliance Process"
+        }
+    },
+    "bsp_iterations": [
+        {
+            "iteration": 1,
+            "user_constraint": "Order creation and payment processing must reside in the same service to guarantee transactional consistency.",
+            "ea_weights": {
+                "('Financial Management and Compliance Process', 'Premium Take-away and Delivery Fulfillment Process')": {
+                    "weight": 0.5,
+                    "reasoning": "Order creation and payment processing must reside in the same service to guarantee transactional consistency."
+                },
+                "('Dine-In Service Delivery and Guest Experience Process', 'Financial Management and Compliance Process')": {
+                    "weight": 0.5,
+                    "reasoning": "Order creation and payment processing must reside in the same service to guarantee transactional consistency."
+                },
+                "('Financial Management and Compliance Process', 'Kitchen Production and Service Preparation Process')": {
+                    "weight": 0.5,
+                    "reasoning": "Order creation and payment processing must reside in the same service to guarantee transactional consistency."
+                },
+                "('Dine-In Service Delivery and Guest Experience Process', 'Premium Take-away and Delivery Fulfillment Process')": {
+                    "weight": 0.3,
+                    "reasoning": "Both processes are involved in order creation and should be closely aligned to ensure consistency in service delivery."
+                },
+                "('Inventory and Storage Management Process', 'Kitchen Production and Service Preparation Process')": {
+                    "weight": 0.2,
+                    "reasoning": "Both processes are involved in managing resources and preparing for service, aligning with minimizing dependencies."
+                },
+                "('Events and B2B Process', 'Marketing, Loyalty and CRM Process')": {
+                    "weight": 0.1,
+                    "reasoning": "Both processes involve customer engagement and relationship management, suggesting a potential overlap in CRM activities."
+                },
+                "('Dine-In Service Delivery and Guest Experience Process', 'Reservation, Table and Capacity Management Process')": {
+                    "weight": 0.2,
+                    "reasoning": "Both processes are involved in managing customer experiences in a dining context, suggesting a need for alignment."
+                },
+                "('Inventory and Storage Management Process', 'Supplier and Procurement Management Process')": {
+                    "weight": 0.3,
+                    "reasoning": "Both processes are involved in managing supply chains and inventory, suggesting a need for close coordination."
+                },
+                "('Kitchen Production and Service Preparation Process', 'Quality, Food Safety and Risk Management Process')": {
+                    "weight": 0.2,
+                    "reasoning": "Both processes are involved in ensuring food safety and quality, suggesting a need for alignment."
+                },
+                "('Dine-In Service Delivery and Guest Experience Process', 'Menu, Product and Experience Design Process')": {
+                    "weight": 0.1,
+                    "reasoning": "Both processes are involved in designing and delivering customer experiences, suggesting a potential overlap in objectives."
+                }
+            },
+            "clusters": [
+                {
+                    "id": 1,
+                    "name": "Order / Feedback Record",
+                    "processes": [
+                        "Financial Management and Compliance Process",
+                        "Premium Take-away and Delivery Fulfillment Process",
+                        "Dine-In Service Delivery and Guest Experience Process"
+                    ],
+                    "entities": [
+                        "Order",
+                        "Feedback Record",
+                        "Guest Profile",
+                        "Financial Statement"
+                    ]
+                },
+                {
+                    "id": 2,
+                    "name": "Reservation",
+                    "processes": [
+                        "Reservation, Table and Capacity Management Process"
+                    ],
+                    "entities": [
+                        "Reservation"
+                    ]
+                },
+                {
+                    "id": 3,
+                    "name": "Campaign",
+                    "processes": [
+                        "Marketing, Loyalty and CRM Process"
+                    ],
+                    "entities": [
+                        "Campaign"
+                    ]
+                },
+                {
+                    "id": 4,
+                    "name": "Event Plan",
+                    "processes": [
+                        "Events and B2B Process"
+                    ],
+                    "entities": [
+                        "Event Plan"
+                    ]
+                },
+                {
+                    "id": 5,
+                    "name": "Invoice / Supplier Profile",
+                    "processes": [
+                        "Supplier and Procurement Management Process"
+                    ],
+                    "entities": [
+                        "Invoice",
+                        "Supplier Profile"
+                    ]
+                },
+                {
+                    "id": 6,
+                    "name": "Waste Record / Inventory Record",
+                    "processes": [
+                        "Inventory and Storage Management Process",
+                        "Kitchen Production and Service Preparation Process"
+                    ],
+                    "entities": [
+                        "Waste Record",
+                        "Inventory Record"
+                    ]
+                },
+                {
+                    "id": 7,
+                    "name": "HACCP Record",
+                    "processes": [
+                        "Quality, Food Safety and Risk Management Process"
+                    ],
+                    "entities": [
+                        "HACCP Record"
+                    ]
+                },
+                {
+                    "id": 8,
+                    "name": "Recipe / Menu",
+                    "processes": [
+                        "Menu, Product and Experience Design Process"
+                    ],
+                    "entities": [
+                        "Recipe",
+                        "Menu"
+                    ]
+                },
+                {
+                    "id": 9,
+                    "name": "Strategic Plan",
+                    "processes": [
+                        "Strategic Planning and Governance Process"
+                    ],
+                    "entities": [
+                        "Strategic Plan"
+                    ]
+                }
+            ],
+            "entity_owners": {
+                "Order": "Premium Take-away and Delivery Fulfillment Process",
+                "Feedback Record": "Dine-In Service Delivery and Guest Experience Process",
+                "Guest Profile": "Premium Take-away and Delivery Fulfillment Process",
+                "Financial Statement": "Financial Management and Compliance Process",
+                "Reservation": "Reservation, Table and Capacity Management Process",
+                "Campaign": "Marketing, Loyalty and CRM Process",
+                "Event Plan": "Events and B2B Process",
+                "Invoice": "Supplier and Procurement Management Process",
+                "Supplier Profile": "Supplier and Procurement Management Process",
+                "Waste Record": "Inventory and Storage Management Process",
+                "Inventory Record": "Inventory and Storage Management Process",
+                "HACCP Record": "Quality, Food Safety and Risk Management Process",
+                "Recipe": "Menu, Product and Experience Design Process",
+                "Menu": "Menu, Product and Experience Design Process",
+                "Strategic Plan": "Strategic Planning and Governance Process"
+            }
+        }
+    ],
+    "final_bsp": {
+        "clusters": [
+            {
+                "id": 1,
+                "name": "Order / Feedback Record",
+                "processes": [
+                    "Financial Management and Compliance Process",
+                    "Premium Take-away and Delivery Fulfillment Process",
+                    "Dine-In Service Delivery and Guest Experience Process"
+                ],
+                "entities": [
+                    "Order",
+                    "Feedback Record",
+                    "Guest Profile",
+                    "Financial Statement"
+                ]
+            },
+            {
+                "id": 2,
+                "name": "Reservation",
+                "processes": [
+                    "Reservation, Table and Capacity Management Process"
+                ],
+                "entities": [
+                    "Reservation"
+                ]
+            },
+            {
+                "id": 3,
+                "name": "Campaign",
+                "processes": [
+                    "Marketing, Loyalty and CRM Process"
+                ],
+                "entities": [
+                    "Campaign"
+                ]
+            },
+            {
+                "id": 4,
+                "name": "Event Plan",
+                "processes": [
+                    "Events and B2B Process"
+                ],
+                "entities": [
+                    "Event Plan"
+                ]
+            },
+            {
+                "id": 5,
+                "name": "Invoice / Supplier Profile",
+                "processes": [
+                    "Supplier and Procurement Management Process"
+                ],
+                "entities": [
+                    "Invoice",
+                    "Supplier Profile"
+                ]
+            },
+            {
+                "id": 6,
+                "name": "Waste Record / Inventory Record",
+                "processes": [
+                    "Inventory and Storage Management Process",
+                    "Kitchen Production and Service Preparation Process"
+                ],
+                "entities": [
+                    "Waste Record",
+                    "Inventory Record"
+                ]
+            },
+            {
+                "id": 7,
+                "name": "HACCP Record",
+                "processes": [
+                    "Quality, Food Safety and Risk Management Process"
+                ],
+                "entities": [
+                    "HACCP Record"
+                ]
+            },
+            {
+                "id": 8,
+                "name": "Recipe / Menu",
+                "processes": [
+                    "Menu, Product and Experience Design Process"
+                ],
+                "entities": [
+                    "Recipe",
+                    "Menu"
+                ]
+            },
+            {
+                "id": 9,
+                "name": "Strategic Plan",
+                "processes": [
+                    "Strategic Planning and Governance Process"
+                ],
+                "entities": [
+                    "Strategic Plan"
+                ]
+            }
+        ],
+        "entity_owners": {
+            "Order": "Premium Take-away and Delivery Fulfillment Process",
+            "Feedback Record": "Dine-In Service Delivery and Guest Experience Process",
+            "Guest Profile": "Premium Take-away and Delivery Fulfillment Process",
+            "Financial Statement": "Financial Management and Compliance Process",
+            "Reservation": "Reservation, Table and Capacity Management Process",
+            "Campaign": "Marketing, Loyalty and CRM Process",
+            "Event Plan": "Events and B2B Process",
+            "Invoice": "Supplier and Procurement Management Process",
+            "Supplier Profile": "Supplier and Procurement Management Process",
+            "Waste Record": "Inventory and Storage Management Process",
+            "Inventory Record": "Inventory and Storage Management Process",
+            "HACCP Record": "Quality, Food Safety and Risk Management Process",
+            "Recipe": "Menu, Product and Experience Design Process",
+            "Menu": "Menu, Product and Experience Design Process",
+            "Strategic Plan": "Strategic Planning and Governance Process"
+        },
+        "ea_weights": {
+            "('Financial Management and Compliance Process', 'Premium Take-away and Delivery Fulfillment Process')": {
+                "weight": 0.5,
+                "reasoning": "Order creation and payment processing must reside in the same service to guarantee transactional consistency."
+            },
+            "('Dine-In Service Delivery and Guest Experience Process', 'Financial Management and Compliance Process')": {
+                "weight": 0.5,
+                "reasoning": "Order creation and payment processing must reside in the same service to guarantee transactional consistency."
+            },
+            "('Financial Management and Compliance Process', 'Kitchen Production and Service Preparation Process')": {
+                "weight": 0.5,
+                "reasoning": "Order creation and payment processing must reside in the same service to guarantee transactional consistency."
+            },
+            "('Dine-In Service Delivery and Guest Experience Process', 'Premium Take-away and Delivery Fulfillment Process')": {
+                "weight": 0.3,
+                "reasoning": "Both processes are involved in order creation and should be closely aligned to ensure consistency in service delivery."
+            },
+            "('Inventory and Storage Management Process', 'Kitchen Production and Service Preparation Process')": {
+                "weight": 0.2,
+                "reasoning": "Both processes are involved in managing resources and preparing for service, aligning with minimizing dependencies."
+            },
+            "('Events and B2B Process', 'Marketing, Loyalty and CRM Process')": {
+                "weight": 0.1,
+                "reasoning": "Both processes involve customer engagement and relationship management, suggesting a potential overlap in CRM activities."
+            },
+            "('Dine-In Service Delivery and Guest Experience Process', 'Reservation, Table and Capacity Management Process')": {
+                "weight": 0.2,
+                "reasoning": "Both processes are involved in managing customer experiences in a dining context, suggesting a need for alignment."
+            },
+            "('Inventory and Storage Management Process', 'Supplier and Procurement Management Process')": {
+                "weight": 0.3,
+                "reasoning": "Both processes are involved in managing supply chains and inventory, suggesting a need for close coordination."
+            },
+            "('Kitchen Production and Service Preparation Process', 'Quality, Food Safety and Risk Management Process')": {
+                "weight": 0.2,
+                "reasoning": "Both processes are involved in ensuring food safety and quality, suggesting a need for alignment."
+            },
+            "('Dine-In Service Delivery and Guest Experience Process', 'Menu, Product and Experience Design Process')": {
+                "weight": 0.1,
+                "reasoning": "Both processes are involved in designing and delivering customer experiences, suggesting a potential overlap in objectives."
+            }
+        },
+        "user_constraints": "[Iteration 1]:\nOrder creation and payment processing must reside in the same service to guarantee transactional consistency."
+    },
+    "systems_analysis": [
+        {
+            "cluster_id": 1,
+            "suggested_name": "Integrated Order and Financial Management",
+            "description": "This system is responsible for managing financial transactions, order processing, and enhancing guest experiences across dine-in and delivery services. It ensures transactional consistency by integrating order creation with payment processing, aligning with financial compliance and service delivery processes.",
+            "build_or_buy": "Hybrid",
+            "build_or_buy_rationale": "While core financial management can be handled by existing ERP solutions, the integration with specific order and guest experience processes requires customization.",
+            "market_options": [
+                {
+                    "name": "SAP S/4HANA",
+                    "fit_rationale": "Offers robust financial management capabilities with customization options for order processing."
+                },
+                {
+                    "name": "Oracle NetSuite",
+                    "fit_rationale": "Provides comprehensive financial and order management features with flexibility for customization."
+                },
+                {
+                    "name": "Microsoft Dynamics 365",
+                    "fit_rationale": "Supports financial operations with the ability to integrate custom order processing workflows."
+                }
+            ]
+        },
+        {
+            "cluster_id": 2,
+            "suggested_name": "Reservation and Capacity Management",
+            "description": "This system manages reservations, table allocations, and capacity planning to optimize dining experiences. It ensures efficient use of resources and enhances customer satisfaction by aligning reservation processes with real-time capacity data.",
+            "build_or_buy": "Buy",
+            "build_or_buy_rationale": "The system's requirements align well with existing reservation and table management software solutions.",
+            "market_options": [
+                {
+                    "name": "OpenTable",
+                    "fit_rationale": "Widely used for managing restaurant reservations and table allocations."
+                },
+                {
+                    "name": "Resy",
+                    "fit_rationale": "Offers comprehensive reservation management features tailored for dining establishments."
+                },
+                {
+                    "name": "SevenRooms",
+                    "fit_rationale": "Provides advanced reservation and capacity management capabilities."
+                }
+            ]
+        },
+        {
+            "cluster_id": 3,
+            "suggested_name": "Marketing and Customer Relationship Management",
+            "description": "This system focuses on managing marketing campaigns, loyalty programs, and customer relationships. It leverages CRM processes to enhance customer engagement and drive loyalty through targeted marketing efforts.",
+            "build_or_buy": "Buy",
+            "build_or_buy_rationale": "The system's functions are well-supported by existing CRM and marketing automation platforms.",
+            "market_options": [
+                {
+                    "name": "Salesforce",
+                    "fit_rationale": "A leading CRM platform with extensive marketing automation capabilities."
+                },
+                {
+                    "name": "HubSpot",
+                    "fit_rationale": "Offers integrated marketing and CRM solutions for customer engagement."
+                },
+                {
+                    "name": "Adobe Experience Cloud",
+                    "fit_rationale": "Provides comprehensive tools for marketing and customer relationship management."
+                }
+            ]
+        },
+        {
+            "cluster_id": 4,
+            "suggested_name": "Event and B2B Management",
+            "description": "This system manages event planning and business-to-business interactions, focusing on organizing events and maintaining B2B relationships. It integrates customer engagement strategies to enhance event experiences and business partnerships.",
+            "build_or_buy": "Hybrid",
+            "build_or_buy_rationale": "While event management software can cover core functionalities, customization is needed for specific B2B interactions and integrations.",
+            "market_options": [
+                {
+                    "name": "Cvent",
+                    "fit_rationale": "Offers event management solutions with customization options for B2B interactions."
+                },
+                {
+                    "name": "Eventbrite",
+                    "fit_rationale": "Provides event planning tools with potential for integration with B2B processes."
+                },
+                {
+                    "name": "Bizzabo",
+                    "fit_rationale": "Supports event management with capabilities for customizing B2B engagement."
+                }
+            ]
+        },
+        {
+            "cluster_id": 5,
+            "suggested_name": "Supplier and Procurement Management",
+            "description": "This system handles supplier relationships, procurement processes, and invoice management. It ensures efficient supply chain operations by coordinating supplier profiles and procurement activities.",
+            "build_or_buy": "Buy",
+            "build_or_buy_rationale": "The system's procurement and supplier management needs are well-served by existing supply chain management solutions.",
+            "market_options": [
+                {
+                    "name": "SAP Ariba",
+                    "fit_rationale": "A comprehensive solution for procurement and supplier management."
+                },
+                {
+                    "name": "Coupa",
+                    "fit_rationale": "Offers robust procurement and supplier management features."
+                },
+                {
+                    "name": "Oracle Procurement Cloud",
+                    "fit_rationale": "Provides extensive tools for managing procurement and supplier relationships."
+                }
+            ]
+        },
+        {
+            "cluster_id": 6,
+            "suggested_name": "Inventory and Kitchen Management",
+            "description": "This system oversees inventory control, storage management, and kitchen production processes. It ensures efficient resource management and service preparation by aligning inventory records with kitchen operations.",
+            "build_or_buy": "Hybrid",
+            "build_or_buy_rationale": "While inventory management software can address core needs, customization is required for specific kitchen production workflows.",
+            "market_options": [
+                {
+                    "name": "Fishbowl Inventory",
+                    "fit_rationale": "Supports inventory management with customization options for kitchen operations."
+                },
+                {
+                    "name": "Oracle NetSuite",
+                    "fit_rationale": "Provides inventory control with flexibility for integrating kitchen processes."
+                },
+                {
+                    "name": "BlueCart",
+                    "fit_rationale": "Offers inventory management tailored for food service operations."
+                }
+            ]
+        },
+        {
+            "cluster_id": 7,
+            "suggested_name": "Quality and Risk Management",
+            "description": "This system is responsible for ensuring food safety, quality control, and risk management. It integrates HACCP records with quality assurance processes to maintain high standards in food safety and risk mitigation.",
+            "build_or_buy": "Build",
+            "build_or_buy_rationale": "The system's focus on specific food safety and risk management processes requires a tailored solution not fully covered by off-the-shelf software.",
+            "market_options": []
+        },
+        {
+            "cluster_id": 8,
+            "suggested_name": "Menu and Product Design",
+            "description": "This system manages the design and development of menus, recipes, and customer experiences. It aligns product design with customer preferences to enhance dining experiences and brand identity.",
+            "build_or_buy": "Build",
+            "build_or_buy_rationale": "The system's unique focus on menu and experience design necessitates a custom-built solution to capture specific business needs.",
+            "market_options": []
+        },
+        {
+            "cluster_id": 9,
+            "suggested_name": "Strategic Planning and Governance",
+            "description": "This system supports strategic planning and governance activities, focusing on developing and executing strategic plans. It ensures alignment of business objectives with governance processes to drive organizational success.",
+            "build_or_buy": "Build",
+            "build_or_buy_rationale": "The system's strategic focus and governance requirements are unique to the organization, necessitating a custom-built solution.",
+            "market_options": []
+        }
+    ]
+}

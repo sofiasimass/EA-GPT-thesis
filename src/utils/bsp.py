@@ -51,6 +51,34 @@ class EAWeightResult(BaseModel):
     biases: List[EAWeight]
 
 
+from typing import Literal
+
+class MarketOption(BaseModel):
+    name: str = Field(description="Name of the commercial software solution (e.g. Salesforce, SAP S/4HANA, Workday)")
+    fit_rationale: str = Field(description="One sentence explaining why this solution fits this system's responsibilities")
+
+class SystemDescription(BaseModel):
+    cluster_id: int = Field(description="The numeric ID of the cluster this description refers to")
+    suggested_name: str = Field(description="A business-meaningful name for this system (e.g. 'Customer Relationship Management')")
+    description: str = Field(description="2-3 sentences describing what this system is responsible for, based on its processes and entities")
+    build_or_buy: Literal["Build", "Buy", "Hybrid"] = Field(
+        description=(
+            "Build — the system's logic is too specific to this business to be covered by off-the-shelf software; "
+            "Buy — the system maps well onto an existing commercial product; "
+            "Hybrid — a commercial product covers the core but significant customisation or extension is needed"
+        )
+    )
+    build_or_buy_rationale: str = Field(
+        description="1-2 sentences justifying the Build/Buy/Hybrid recommendation in terms of this system's specificity and market coverage"
+    )
+    market_options: List[MarketOption] = Field(
+        description="Up to 3 real commercial products relevant to this system. Leave empty if recommendation is Build."
+    )
+
+class SystemsAnalysisResult(BaseModel):
+    systems: List[SystemDescription]
+
+
 @dataclass
 class Cluster:
     id: int

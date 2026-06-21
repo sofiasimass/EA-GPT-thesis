@@ -1,0 +1,91 @@
+[
+  {
+    "system": "Front-of-House Operations",
+    "processes": [
+      "Dine-In Service Delivery and Guest Experience Process",
+      "Reservation, Table and Capacity Management Process",
+      "Events and B2B Process"
+    ],
+    "entities": ["Guest Profile", "Reservation", "Order", "Event Plan", "Feedback Record"],
+    "operations": [
+      {"process": "Dine-In Service Delivery and Guest Experience Process", "entity": "Order", "operation": "C"},
+      {"process": "Dine-In Service Delivery and Guest Experience Process", "entity": "Guest Profile", "operation": "R"},
+      {"process": "Dine-In Service Delivery and Guest Experience Process", "entity": "Reservation", "operation": "R"},
+      {"process": "Dine-In Service Delivery and Guest Experience Process", "entity": "Feedback Record", "operation": "C"},
+      {"process": "Reservation, Table and Capacity Management Process", "entity": "Reservation", "operation": "C"},
+      {"process": "Reservation, Table and Capacity Management Process", "entity": "Guest Profile", "operation": "R"},
+      {"process": "Reservation, Table and Capacity Management Process", "entity": "Feedback Record", "operation": "R"},
+      {"process": "Events and B2B Process", "entity": "Event Plan", "operation": "C"},
+      {"process": "Events and B2B Process", "entity": "Guest Profile", "operation": "R"},
+      {"process": "Events and B2B Process", "entity": "Order", "operation": "R"},
+      {"process": "Events and B2B Process", "entity": "Invoice", "operation": "C"}
+    ]
+  },
+  {
+    "system": "Kitchen and Delivery",
+    "processes": [
+      "Kitchen Production and Service Preparation Process",
+      "Premium Take-away and Delivery Fulfillment Process",
+      "Inventory and Storage Management Process"
+    ],
+    "entities": ["Recipe", "Menu", "Inventory Record", "Waste Record", "Supplier Profile"],
+    "operations": [
+      {"process": "Kitchen Production and Service Preparation Process", "entity": "Recipe", "operation": "R"},
+      {"process": "Kitchen Production and Service Preparation Process", "entity": "Inventory Record", "operation": "R"},
+      {"process": "Kitchen Production and Service Preparation Process", "entity": "HACCP Record", "operation": "U"},
+      {"process": "Kitchen Production and Service Preparation Process", "entity": "Waste Record", "operation": "U"},
+      {"process": "Premium Take-away and Delivery Fulfillment Process", "entity": "Order", "operation": "C"},
+      {"process": "Premium Take-away and Delivery Fulfillment Process", "entity": "Guest Profile", "operation": "R"},
+      {"process": "Premium Take-away and Delivery Fulfillment Process", "entity": "Inventory Record", "operation": "R"},
+      {"process": "Premium Take-away and Delivery Fulfillment Process", "entity": "Feedback Record", "operation": "R"},
+      {"process": "Inventory and Storage Management Process", "entity": "Inventory Record", "operation": "U"},
+      {"process": "Inventory and Storage Management Process", "entity": "Supplier Profile", "operation": "R"},
+      {"process": "Inventory and Storage Management Process", "entity": "Waste Record", "operation": "C"}
+    ]
+  },
+  {
+    "system": "Finance and Administration",
+    "processes": [
+      "Financial Management and Compliance Process",
+      "Supplier and Procurement Management Process",
+      "Strategic Planning and Governance Process"
+    ],
+    "entities": ["Financial Statement", "Invoice", "Strategic Plan", "Supplier Profile"],
+    "operations": [
+      {"process": "Financial Management and Compliance Process", "entity": "Financial Statement", "operation": "C"},
+      {"process": "Financial Management and Compliance Process", "entity": "Invoice", "operation": "R"},
+      {"process": "Financial Management and Compliance Process", "entity": "HACCP Record", "operation": "R"},
+      {"process": "Financial Management and Compliance Process", "entity": "Order", "operation": "R"},
+      {"process": "Supplier and Procurement Management Process", "entity": "Supplier Profile", "operation": "C"},
+      {"process": "Supplier and Procurement Management Process", "entity": "Invoice", "operation": "C"},
+      {"process": "Supplier and Procurement Management Process", "entity": "Inventory Record", "operation": "R"},
+      {"process": "Strategic Planning and Governance Process", "entity": "Strategic Plan", "operation": "C"},
+      {"process": "Strategic Planning and Governance Process", "entity": "Financial Statement", "operation": "R"},
+      {"process": "Strategic Planning and Governance Process", "entity": "Supplier Profile", "operation": "R"},
+      {"process": "Strategic Planning and Governance Process", "entity": "Campaign", "operation": "R"}
+    ]
+  },
+  {
+    "system": "Marketing and Quality",
+    "processes": [
+      "Marketing, Loyalty and CRM Process",
+      "Quality, Food Safety and Risk Management Process",
+      "Menu, Product and Experience Design Process"
+    ],
+    "entities": ["Campaign", "Guest Profile", "Feedback Record", "HACCP Record", "Menu", "Recipe"],
+    "operations": [
+      {"process": "Marketing, Loyalty and CRM Process", "entity": "Campaign", "operation": "C"},
+      {"process": "Marketing, Loyalty and CRM Process", "entity": "Guest Profile", "operation": "R"},
+      {"process": "Marketing, Loyalty and CRM Process", "entity": "Feedback Record", "operation": "R"},
+      {"process": "Marketing, Loyalty and CRM Process", "entity": "Reservation", "operation": "R"},
+      {"process": "Quality, Food Safety and Risk Management Process", "entity": "HACCP Record", "operation": "C"},
+      {"process": "Quality, Food Safety and Risk Management Process", "entity": "Feedback Record", "operation": "R"},
+      {"process": "Quality, Food Safety and Risk Management Process", "entity": "Supplier Profile", "operation": "R"},
+      {"process": "Quality, Food Safety and Risk Management Process", "entity": "Waste Record", "operation": "R"},
+      {"process": "Menu, Product and Experience Design Process", "entity": "Menu", "operation": "C"},
+      {"process": "Menu, Product and Experience Design Process", "entity": "Recipe", "operation": "C"},
+      {"process": "Menu, Product and Experience Design Process", "entity": "Feedback Record", "operation": "R"},
+      {"process": "Menu, Product and Experience Design Process", "entity": "Supplier Profile", "operation": "R"}
+    ]
+  }
+]
