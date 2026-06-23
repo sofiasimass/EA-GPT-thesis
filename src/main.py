@@ -288,6 +288,22 @@ async def main():
                 print(f"    - {opt.name}: {opt.fit_rationale}")
     print("=" * 60)
 
+    print("\nEvaluating EA principles compliance...")
+    ea_compliance = await ai.evaluate_ea_compliance(
+        final_clusters=final_bsp.clusters,
+        ea_principles=baseline_principles,
+        weight_reasoning_history=weight_reasoning_history,
+    )
+
+    print("\n" + "=" * 60)
+    print("EA PRINCIPLES COMPLIANCE")
+    print("=" * 60)
+    for ev in ea_compliance.evaluations:
+        status_label = {"compliant": "OK", "partial": "PARTIAL", "violated": "VIOLATED"}[ev.status]
+        print(f"\n[{status_label}] {ev.principle}")
+        print(f"  {ev.justification}")
+    print("=" * 60)
+
     with open("full_extraction_log.json", "w") as f:
         json.dump({
             "extraction": final_result.model_dump(),
@@ -318,6 +334,14 @@ async def main():
                     ],
                 }
                 for s in systems_analysis.systems
+            ],
+            "ea_compliance": [
+                {
+                    "principle": ev.principle,
+                    "status": ev.status,
+                    "justification": ev.justification,
+                }
+                for ev in ea_compliance.evaluations
             ],
         }, f, indent=4)
 

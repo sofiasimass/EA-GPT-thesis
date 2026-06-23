@@ -79,6 +79,19 @@ class SystemsAnalysisResult(BaseModel):
     systems: List[SystemDescription]
 
 
+class PrincipleEvaluation(BaseModel):
+    principle: str = Field(description="The EA principle being evaluated, copied verbatim from the principles list")
+    status: Literal["compliant", "violated", "partial"] = Field(
+        description="compliant — the final clustering fully respects this principle; "
+                    "violated — the clustering clearly breaks this principle; "
+                    "partial — the clustering partially respects it but with notable exceptions"
+    )
+    justification: str = Field(description="1-2 sentences grounding the verdict in specific clusters, processes, or entities")
+
+class EAComplianceResult(BaseModel):
+    evaluations: List[PrincipleEvaluation]
+
+
 @dataclass
 class Cluster:
     id: int

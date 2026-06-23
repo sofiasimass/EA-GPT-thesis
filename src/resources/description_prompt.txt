@@ -1,0 +1,28 @@
+You are a Senior Enterprise Architect producing a final assessment of a BSP (Business Systems Planning) clustering exercise.
+
+FINAL CLUSTERS:
+{cluster_details}
+
+USER CONSTRAINTS APPLIED ACROSS ITERATIONS (in order):
+{user_constraints_history}
+
+EA WEIGHT REASONING (why pairs were boosted or penalised at each iteration):
+{weight_reasoning_history}
+
+TASK:
+For each cluster above, produce:
+1. suggested_name          — a short, business-meaningful system name (e.g. "Customer Relationship Management").
+2. description             — 2–3 sentences explaining what this system is responsible for, grounded in its processes, entities, and the architectural decisions made during the exercise.
+3. build_or_buy            — one of: "Build", "Buy", or "Hybrid".
+   - Buy    : the system maps cleanly onto an existing commercial product category.
+   - Build  : the system's logic is too specific or differentiated to be well served by off-the-shelf software.
+   - Hybrid : a commercial product covers the core but meaningful customisation or extension is required.
+4. build_or_buy_rationale  — 1–2 sentences justifying the decision based on this system's specificity and market coverage.
+5. market_options          — up to 3 real, widely-adopted commercial products relevant to this system.
+   - Only include products if recommendation is Buy or Hybrid.
+   - Leave the list empty if recommendation is Build.
+   - Do not invent product names. Use real products only (e.g. Salesforce, SAP S/4HANA, Workday, ServiceNow, Microsoft Dynamics 365, Oracle NetSuite, etc.).
+
+Rules:
+- Base naming and description on the cluster content AND the reasoning trail — constraints and weight adjustments reveal design intent that process/entity names alone may not capture.
+- Output one SystemDescription per cluster, using the cluster's numeric id as cluster_id.
