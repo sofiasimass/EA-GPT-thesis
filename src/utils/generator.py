@@ -8,7 +8,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from typing import List
 
-from .bsp import Cluster, EAWeight, EAWeightResult, SystemsAnalysisResult, MarketOption, EAComplianceResult
+from .bsp import Cluster, EAWeight, EAWeightResult, SystemsAnalysisResult, MarketOption, EAComplianceResult, AsIsToBeResult
 from .matrix import MatrixResult #output schema
 
 class Generator:
@@ -145,6 +145,59 @@ class Generator:
             "cluster_details": cluster_details,
             "ea_principles": ea_principles,
             "weight_reasoning_history": weight_reasoning_history.strip() if weight_reasoning_history.strip() else "(no weight adjustments made)",
+        })
+
+    async def compare_as_is_to_be(
+        self,
+        as_is_mapping: dict,
+        final_clusters: List[Cluster],
+        systems_analysis: SystemsAnalysisResult,
+        asis_metrics: dict,
+        tobe_metrics: dict,
+    ) -> AsIsToBeResult:
+        """
+        Compares the user's current application landscape (As-Is) against the
+        proposed BSP clustering (To-Be) and returns a gap analysis with
+        ISA metric comparison and ordered migration steps.
+        """
+        proposed_lines = []
+        for s in systems_analysis.systems:
+            cluster = next((c for c in final_clusters if c.id == s.cluster_id), None)
+            if cluster:
+                proposed_lines.append(
+                    f"System {s.cluster_id}: {s.suggested_name}\n"
+                    f"  Processes  : {', '.join(cluster.processes) or '—'}\n"
+                    f"  Entities   : {', '.join(cluster.entities) or '—'}\n"
+                    f"  Description: {s.description}"
+                )
+        proposed_systems = "\n\n".join(proposed_lines)
+
+        as_is_lines = [f"{app}: {', '.join(procs)}" for app, procs in as_is_mapping.items()]
+        as_is_formatted = "\n".join(as_is_lines)
+
+        metric_meta = {
+            "RSF":    ("1.0", "avg IS blocks per process — 1 = min coupling"),
+            "NAIEF":  ("1.0", "entity write authority — 1 = single source of truth"),
+            "LCOISF": ("1.0", "cluster cohesion — 1 = no giant-stain clusters"),
+            "CPSMF":  ("1.0", "critical/non-critical isolation — 1 = perfect separation"),
+            "DIIEF":  ("1.0", "data storage uniqueness — 1 = no entity redundancy"),
+        }
+        rows = ["Metric  | As-Is | To-Be | Ideal | Meaning",
+                "--------|-------|-------|-------|--------"]
+        for m, (ideal, desc) in metric_meta.items():
+            rows.append(f"{m:7} | {str(asis_metrics.get(m,'N/A')):5} | {str(tobe_metrics.get(m,'N/A')):5} | {ideal:5} | {desc}")
+        metrics_comparison = "\n".join(rows)
+
+        prompt_path = os.path.join(os.path.dirname(__file__), "..", "resources", "comparison_prompt.txt")
+        with open(prompt_path, "r", encoding="utf-8") as f:
+            base_instructions = f.read()
+        prompt = ChatPromptTemplate.from_template(base_instructions + "\n\n")
+
+        comparison_llm = self.llm.with_structured_output(AsIsToBeResult)
+        return await (prompt | comparison_llm).ainvoke({
+            "proposed_systems":    proposed_systems,
+            "as_is_mapping":       as_is_formatted,
+            "metrics_comparison":  metrics_comparison,
         })
 
     async def extract(self, context: str, process_list: list):

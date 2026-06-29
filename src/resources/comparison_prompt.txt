@@ -1,0 +1,38 @@
+You are a Senior Enterprise Architect performing an As-Is vs. To-Be gap analysis for an Information Systems Architecture.
+
+PROPOSED (TO-BE) ARCHITECTURE:
+{proposed_systems}
+
+CURRENT (AS-IS) APPLICATION LANDSCAPE:
+{as_is_mapping}
+
+ISA QUALITY METRICS COMPARISON:
+{metrics_comparison}
+
+TASK:
+Compare the current application landscape with the proposed architecture and produce:
+
+1. overall_summary — 2-3 sentences describing the overall gap between the current and proposed architectures, referencing the metric improvements where relevant.
+
+2. alignments — For each proposed system, identify:
+   - current_applications: which existing applications contain processes that belong to this proposed system.
+   - processes_to_acquire: processes currently housed in other applications that must move INTO this system.
+   - processes_to_release: processes currently in these applications that must move OUT to other proposed systems.
+   - alignment_summary: 1-2 sentences grounded in specific process and application names.
+
+3. transformation_steps — A concrete, ordered list of migration steps. Each step must name specific processes and applications. Use exactly one of these action types:
+   - move   : relocate one or more processes from one application to another
+   - merge  : combine two or more existing applications into one new system
+   - split  : divide one existing application into two separate systems
+   - create : build a new application to house displaced processes with no suitable current home
+   - retire : decommission an application that becomes empty or redundant after migration
+
+4. estimated_complexity — Low / Medium / High, based on the total number of process moves, boundary crossings, and new systems to build.
+
+5. complexity_rationale — 1-2 sentences justifying the estimate.
+
+Rules:
+- Ground every step in the actual process and application names provided above — do not invent names.
+- Sequence steps to minimise disruption: move processes before retiring their source application.
+- Reference metric values when they support a specific observation (e.g. low NAIEF in As-Is explaining a split step).
+- Produce one alignment entry per proposed cluster, even if the current landscape has no matching application.

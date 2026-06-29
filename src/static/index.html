@@ -43,7 +43,7 @@ body {
 #screen-landing.fade-out { opacity: 0; pointer-events: none; }
 
 .globe-col {
-  flex: 0 0 52%;
+  flex: 0 0 62%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -59,7 +59,7 @@ body {
   pointer-events: none;
 }
 #cube-canvas {
-  width: min(90%, 560px);
+  width: min(95%, 780px);
   height: auto;
   display: block;
   filter: drop-shadow(0 0 60px rgba(74,226,150,.12));
@@ -738,6 +738,84 @@ body {
 .start-ubtn:disabled { opacity: .35; cursor: not-allowed; }
 .start-ubtn:not(:disabled):hover { background: rgba(74,226,150,.08); }
 
+/* ────── As-Is upload card ────── */
+.asis-upload-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 16px;
+  width: 100%;
+}
+.asis-upload-card p { font-size: 13px; color: var(--text2); margin-bottom: 4px; }
+.asis-upload-card small { font-size: 11px; color: var(--text3); display: block; margin-bottom: 14px; }
+
+/* ────── Metrics comparison table ────── */
+.metrics-wrap {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  overflow: hidden;
+  width: 100%;
+}
+.metrics-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.metrics-table th {
+  background: var(--bg3);
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: .3px;
+}
+.metrics-table td { padding: 8px 12px; border-top: 1px solid var(--border); color: var(--text); }
+.metrics-table td.num { text-align: right; font-variant-numeric: tabular-nums; font-size: 13px; font-weight: 600; }
+.delta-up   { color: var(--c-c); }
+.delta-down { color: var(--c-d); }
+.delta-flat { color: var(--text3); }
+
+.metric-legend { border-top: 1px solid var(--border); padding: 12px 14px; }
+.metric-legend summary { font-size: 11px; color: var(--text3); cursor: pointer; user-select: none; }
+.metric-legend summary:hover { color: var(--text2); }
+.legend-rows { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.legend-row { display: flex; gap: 10px; font-size: 11px; }
+.legend-row strong { color: var(--accent); flex-shrink: 0; width: 52px; }
+.legend-row span { color: var(--text2); line-height: 1.5; }
+
+/* ────── Alignment cards ────── */
+.align-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; width: 100%; }
+.align-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r); padding: 13px; display: flex; flex-direction: column; gap: 7px; }
+.align-card h4 { font-size: 13px; font-weight: 600; }
+.align-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: var(--text3); margin-bottom: 3px; }
+.align-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.align-tag { font-size: 10px; padding: 2px 7px; border-radius: 4px; background: var(--bg3); border: 1px solid var(--border); color: var(--text2); }
+.align-tag.in-tag  { border-color: rgba(74,226,150,.35);  color: var(--c-c); }
+.align-tag.out-tag { border-color: rgba(248,113,113,.35); color: var(--c-d); }
+.align-summary { font-size: 11px; color: var(--text2); line-height: 1.55; }
+
+/* ────── Migration steps ────── */
+.steps-list { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.step-item { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--rs); padding: 11px 13px; display: flex; gap: 12px; align-items: flex-start; }
+.step-num { flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; background: var(--bg4); border: 1px solid var(--border); font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; color: var(--text2); margin-top: 1px; }
+.step-action { flex-shrink: 0; font-size: 9px; font-weight: 700; padding: 3px 7px; border-radius: 4px; text-transform: uppercase; letter-spacing: .5px; margin-top: 2px; }
+.sa-move   { background: rgba(96,165,250,.12);  color: var(--c-r); border: 1px solid rgba(96,165,250,.25); }
+.sa-merge  { background: rgba(74,226,150,.12);  color: var(--c-c); border: 1px solid rgba(74,226,150,.25); }
+.sa-split  { background: rgba(251,191,36,.12);  color: var(--c-u); border: 1px solid rgba(251,191,36,.25); }
+.sa-create { background: rgba(192,132,252,.12); color: #c084fc;    border: 1px solid rgba(192,132,252,.25); }
+.sa-retire { background: rgba(248,113,113,.12); color: var(--c-d); border: 1px solid rgba(248,113,113,.25); }
+.step-body { flex: 1; }
+.step-body p { font-size: 12px; color: var(--text); line-height: 1.5; }
+.step-body small { font-size: 11px; color: var(--text3); line-height: 1.5; display: block; margin-top: 3px; }
+
+/* ────── Complexity badge (reuses .badge sizing) ────── */
+.cx-low  { background: rgba(74,226,150,.12); color: var(--c-c); border: 1px solid rgba(74,226,150,.25); }
+.cx-med  { background: rgba(251,191,36,.12); color: var(--c-u); border: 1px solid rgba(251,191,36,.25); }
+.cx-high { background: rgba(248,113,113,.12); color: var(--c-d); border: 1px solid rgba(248,113,113,.25); }
+
 /* misc */
 .hidden { display: none !important; }
 svg { display: block; }
@@ -826,8 +904,9 @@ svg { display: block; }
 </div>
 
 <!-- hidden file inputs -->
-<input type="file" id="fi-csv"     accept=".csv"          style="display:none" onchange="fileChosen('csv',this)"/>
-<input type="file" id="fi-context" accept=".txt,.pdf"     style="display:none" onchange="fileChosen('context',this)"/>
+<input type="file" id="fi-csv"     accept=".csv"      style="display:none" onchange="fileChosen('csv',this)"/>
+<input type="file" id="fi-context" accept=".txt,.pdf"  style="display:none" onchange="fileChosen('context',this)"/>
+<input type="file" id="fi-as-is"   accept=".csv"      style="display:none" onchange="fileChosen('as-is',this)"/>
 
 <script>
 // ───────────────────────── Cube matrix animation ─────────────────────────
@@ -913,7 +992,7 @@ svg { display: block; }
   function sizeCanvas() {
     const dpr = window.devicePixelRatio || 1;
     const col = canvas.parentElement;
-    const W   = Math.min(col.clientWidth * 0.88, 560);
+    const W   = Math.min(col.clientWidth * 0.95, 780);
     // Cap height so it never exceeds the available column height
     const H   = Math.min(W * 0.78, col.clientHeight * 0.80);
     canvas.width        = W * dpr;
@@ -1034,6 +1113,8 @@ function handleMsg(msg) {
     case 'pick_constraint':   appendConstraintPicker(msg.inferred); break;
     case 'systems_analysis':  appendSystemsAnalysis(msg.systems); break;
     case 'ea_compliance':     appendEaCompliance(msg.evaluations); break;
+    case 'upload_as_is':      appendAsIsUpload(); break;
+    case 'as_is_comparison':  appendAsIsComparison(msg); break;
     case 'complete':          appendDone(msg.message); break;
     case 'error':             appendError(msg.message); break;
   }
@@ -1328,11 +1409,12 @@ function appendError(message) {
 // ───────────────────────── Matrix helpers ─────────────────────────
 function makeMatrixLoader(type) {
   const LABELS = {
-    matrix:  'Loading process-entity matrix…',
-    bsp:     'Running BSP clustering…',
-    weights: 'Computing EA weights…',
-    systems: 'Generating systems analysis…',
+    matrix:     'Loading process-entity matrix…',
+    bsp:        'Running BSP clustering…',
+    weights:    'Computing EA weights…',
+    systems:    'Generating systems analysis…',
     compliance: 'Evaluating EA compliance…',
+    comparison: 'Comparing As-Is vs. To-Be architecture…',
   };
   const ROWS = 7, COLS = 14;
   const wrap = document.createElement('div');
@@ -1502,11 +1584,18 @@ function fileChosen(kind, input) {
     const b64 = bufferToB64(ev.target.result);
     if (kind === 'csv') {
       state.csvFile = { name: file.name, b64 };
-    } else {
+      renderFileChips();
+    } else if (kind === 'context') {
       const ftype = file.name.toLowerCase().endsWith('.pdf') ? 'pdf' : 'txt';
       state.ctxFile = { name: file.name, b64, ftype };
+      renderFileChips();
+    } else if (kind === 'as-is') {
+      const card = document.getElementById('as-is-upload-card');
+      if (card) card.querySelectorAll('button').forEach(b => b.disabled = true);
+      addUserBubble('📊 ' + file.name);
+      state.ws.send(JSON.stringify({ type: 'answer', value: b64 }));
+      state.stage = 'running';
     }
-    renderFileChips();
   };
   reader.readAsArrayBuffer(file);
   input.value = '';
@@ -1592,6 +1681,150 @@ function handleKey(e) {
 function autoResize(el) {
   el.style.height = 'auto';
   el.style.height = Math.min(el.scrollHeight, 130) + 'px';
+}
+
+// ───────────────────────── As-Is upload ─────────────────────────
+function appendAsIsUpload() {
+  state.stage = 'as_is_upload';
+  const card = document.createElement('div');
+  card.className = 'asis-upload-card';
+  card.id = 'as-is-upload-card';
+  card.innerHTML = `
+    <p>Upload your current application landscape as a <strong>CSV with two columns: Process, Application</strong></p>
+    <small>Example row: "Order Management, ERP System"</small>
+    <div class="upload-btns">
+      <button class="ubtn" onclick="document.getElementById('fi-as-is').click()">
+        <span class="ubtn-icon">📊</span>
+        <div class="ubtn-text"><strong>As-Is Matrix</strong><small>Process, Application (.csv)</small></div>
+      </button>
+    </div>`;
+  addAiRow(card);
+}
+
+// ───────────────────────── As-Is comparison ─────────────────────────
+const METRIC_LEGEND = [
+  { key: 'RSF',    label: 'Response for a Service Factor',                    desc: 'Average number of IS blocks (systems) that support each process. Ideal = 1.0 — every process lives in exactly one system, minimising cross-system coupling.' },
+  { key: 'NAIEF',  label: 'Number of Applications for Information Entity Factor', desc: 'How many applications manage (Create/Update/Delete) each data entity. Ideal = 1.0 — a single application is the authoritative source of truth for each entity.' },
+  { key: 'LCOISF', label: 'Lack of Cohesion in IS Block Factor',               desc: 'Internal cohesion of each cluster, measured as the fraction of entity pairs that share at least one common process. Ideal = 1.0 — no "giant-stain" clusters aggregating unrelated functions.' },
+  { key: 'CPSMF',  label: 'Critical Process – System Mismatch Factor',         desc: 'Degree to which atomic (critical) and end-to-end (non-critical) processes are isolated in separate systems. Ideal = 1.0 — critical processes are never mixed with non-critical ones.' },
+  { key: 'DIIEF',  label: 'Different Implementations of Information Entity Factor', desc: 'Measures data-storage redundancy: how many systems store or access each entity. Ideal = 1.0 — each entity exists in exactly one location, with no duplication across systems.' },
+];
+
+function appendAsIsComparison(msg) {
+  stopLoader();
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex;flex-direction:column;gap:16px;width:100%';
+
+  // ── Header + complexity ──
+  const cx = msg.estimated_complexity;
+  const cxClass = cx === 'Low' ? 'cx-low' : cx === 'Medium' ? 'cx-med' : 'cx-high';
+  const hdr = document.createElement('div');
+  hdr.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <span style="font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.2px">↔ As-Is vs. To-Be Gap Analysis</span>
+      <span class="badge ${cxClass}">${escHtml(cx)} complexity</span>
+    </div>
+    <div style="font-size:13px;color:var(--text);line-height:1.65;margin-bottom:4px">${escHtml(msg.overall_summary)}</div>
+    <div style="font-size:11px;color:var(--text3);line-height:1.55">${escHtml(msg.complexity_rationale)}</div>`;
+  wrap.appendChild(hdr);
+
+  // ── Metrics table ──
+  const mwrap = document.createElement('div');
+  mwrap.className = 'metrics-wrap';
+  let tableRows = '';
+  METRIC_LEGEND.forEach(({ key }) => {
+    const av = (msg.asis_metrics[key] ?? 0);
+    const tv = (msg.tobe_metrics[key] ?? 0);
+    const d  = tv - av;
+    const dClass = d > 0.001 ? 'delta-up' : d < -0.001 ? 'delta-down' : 'delta-flat';
+    const arrow  = d > 0.001 ? '↑' : d < -0.001 ? '↓' : '=';
+    tableRows += `
+      <tr>
+        <td><strong>${escHtml(key)}</strong></td>
+        <td class="num">${av.toFixed(3)}</td>
+        <td class="num">${tv.toFixed(3)}</td>
+        <td class="num ${dClass}">${d >= 0 ? '+' : ''}${d.toFixed(3)} ${arrow}</td>
+      </tr>`;
+  });
+  mwrap.innerHTML = `
+    <table class="metrics-table">
+      <thead><tr><th>Metric</th><th style="text-align:right">As-Is</th><th style="text-align:right">To-Be</th><th style="text-align:right">Δ</th></tr></thead>
+      <tbody>${tableRows}</tbody>
+    </table>
+    <details class="metric-legend">
+      <summary>What do these metrics mean?</summary>
+      <div class="legend-rows">
+        ${METRIC_LEGEND.map(m => `
+          <div class="legend-row">
+            <strong>${escHtml(m.key)}</strong>
+            <span><em>${escHtml(m.label)}</em> — ${escHtml(m.desc)}</span>
+          </div>`).join('')}
+      </div>
+    </details>`;
+  wrap.appendChild(mwrap);
+
+  // ── Alignment cards ──
+  if (msg.alignments && msg.alignments.length) {
+    const algHdr = document.createElement('div');
+    algHdr.className = 'card-head';
+    algHdr.style.cssText = 'padding:11px 0 9px;font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.2px';
+    algHdr.textContent = '⬡ Alignment by proposed system';
+    wrap.appendChild(algHdr);
+
+    const grid = document.createElement('div');
+    grid.className = 'align-grid';
+    msg.alignments.forEach((a, i) => {
+      const col = CLUSTER_COLORS[i % CLUSTER_COLORS.length];
+      const card = document.createElement('div');
+      card.className = 'align-card';
+      card.style.borderColor = col + '55';
+
+      const apps = a.current_applications.length
+        ? a.current_applications.map(x => `<span class="align-tag">${escHtml(x)}</span>`).join('')
+        : '<span style="font-size:11px;color:var(--text3)">— none matched</span>';
+      const inTags = a.processes_to_acquire.map(x => `<span class="align-tag in-tag">${escHtml(x)}</span>`).join('');
+      const outTags = a.processes_to_release.map(x => `<span class="align-tag out-tag">${escHtml(x)}</span>`).join('');
+
+      card.innerHTML = `
+        <h4 style="color:${col}">[${a.proposed_cluster_id}] ${escHtml(a.proposed_system_name)}</h4>
+        <div>
+          <div class="align-label">Current applications</div>
+          <div class="align-tags">${apps}</div>
+        </div>
+        ${inTags ? `<div><div class="align-label">Move in ↓</div><div class="align-tags">${inTags}</div></div>` : ''}
+        ${outTags ? `<div><div class="align-label">Move out ↑</div><div class="align-tags">${outTags}</div></div>` : ''}
+        <div class="align-summary">${escHtml(a.alignment_summary)}</div>`;
+      grid.appendChild(card);
+    });
+    wrap.appendChild(grid);
+  }
+
+  // ── Migration steps ──
+  if (msg.transformation_steps && msg.transformation_steps.length) {
+    const stpHdr = document.createElement('div');
+    stpHdr.className = 'card-head';
+    stpHdr.style.cssText = 'padding:11px 0 9px;font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.2px';
+    stpHdr.textContent = '→ Migration steps';
+    wrap.appendChild(stpHdr);
+
+    const list = document.createElement('div');
+    list.className = 'steps-list';
+    msg.transformation_steps.forEach(s => {
+      const item = document.createElement('div');
+      item.className = 'step-item';
+      item.innerHTML = `
+        <div class="step-num">${s.step_number}</div>
+        <span class="step-action sa-${s.action}">${escHtml(s.action)}</span>
+        <div class="step-body">
+          <p>${escHtml(s.description)}</p>
+          <small>${escHtml(s.rationale)}</small>
+        </div>`;
+      list.appendChild(item);
+    });
+    wrap.appendChild(list);
+  }
+
+  addAiRow(wrap, 'wide');
 }
 
 // ───────────────────────── Utils ─────────────────────────

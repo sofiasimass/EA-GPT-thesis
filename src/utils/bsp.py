@@ -92,6 +92,62 @@ class EAComplianceResult(BaseModel):
     evaluations: List[PrincipleEvaluation]
 
 
+class TransformationStep(BaseModel):
+    step_number: int = Field(description="Sequential order of this migration step, starting at 1")
+    action: Literal["merge", "split", "move", "create", "retire"] = Field(
+        description=(
+            "merge — combine two or more existing applications into one; "
+            "split — divide one existing application into two; "
+            "move  — relocate specific processes from one application to another; "
+            "create — build a new application for processes with no suitable current home; "
+            "retire — decommission an application that becomes empty or redundant after migration"
+        )
+    )
+    description: str = Field(description="One concrete sentence describing the action, naming specific processes and applications")
+    rationale: str = Field(description="One sentence explaining why this step is required")
+    affected_processes: List[str] = Field(description="Names of processes involved in this step")
+    affected_applications: List[str] = Field(description="Names of current or proposed applications involved in this step")
+
+
+class SystemAlignment(BaseModel):
+    proposed_cluster_id: int = Field(description="The numeric ID of the proposed cluster")
+    proposed_system_name: str = Field(description="The suggested name of the proposed system")
+    current_applications: List[str] = Field(
+        description="Names of existing applications that contain at least one process belonging to this proposed system"
+    )
+    processes_to_acquire: List[str] = Field(
+        description="Processes currently in other applications that need to move INTO this proposed system"
+    )
+    processes_to_release: List[str] = Field(
+        description="Processes currently grouped here that need to move OUT to a different proposed system"
+    )
+    alignment_summary: str = Field(
+        description="1-2 sentences summarising how well the current state aligns with this proposed system and what the main gap is"
+    )
+
+
+class AsIsToBeResult(BaseModel):
+    overall_summary: str = Field(
+        description="2-3 sentences describing the overall gap between the current application landscape and the proposed architecture, referencing the metric improvements"
+    )
+    alignments: List[SystemAlignment] = Field(
+        description="One alignment entry per proposed system/cluster"
+    )
+    transformation_steps: List[TransformationStep] = Field(
+        description="Concrete, ordered migration steps to transform the current landscape into the proposed architecture"
+    )
+    estimated_complexity: Literal["Low", "Medium", "High"] = Field(
+        description=(
+            "Low — few process moves, minimal application changes; "
+            "Medium — moderate restructuring across several applications; "
+            "High — significant replatforming, many cross-system migrations, or new systems to build"
+        )
+    )
+    complexity_rationale: str = Field(
+        description="1-2 sentences justifying the complexity estimate based on the number and nature of required changes"
+    )
+
+
 @dataclass
 class Cluster:
     id: int
@@ -447,6 +503,125 @@ def _compute_e2e_span(df: pd.DataFrame, clusters: List[Cluster], process_types: 
         ]
         span[proc] = touched_ids
     return span
+
+
+def compute_isa_metrics(
+    clusters: List[Cluster],
+    crud_matrix: Dict[str, Dict[str, str]],
+    process_types: Dict[str, str],
+) -> Dict[str, float]:
+    """
+    Computes ISA quality metrics (Vasconcelos et al.) for a given clustering.
+    All metrics in [0, 1]; higher is better.
+
+    RSF   : Average IS blocks per process — 1 = every process lives in exactly one system
+    NAIEF : Entity write responsibility — 1 = single source of truth per entity (CUD in one cluster)
+    LCOISF: Cluster cohesion — 1 = every entity pair in a cluster shares at least one common process
+    CPSMF : Critical/non-critical isolation — 1 = atomic and E2E processes never share a cluster
+    DIIEF : Data access uniqueness — 1 = each entity is touched by processes in only one cluster
+    """
+    if not crud_matrix or not clusters:
+        return {"RSF": 0.0, "NAIEF": 0.0, "LCOISF": 0.0, "CPSMF": 0.0, "DIIEF": 0.0}
+
+    df = pd.DataFrame(crud_matrix).T
+    all_procs = list(df.index)
+    all_ents  = list(df.columns)
+
+    proc_cluster_ids: Dict[str, Set[int]] = {p: set() for p in all_procs}
+    ent_cud_clusters: Dict[str, Set[int]] = {e: set() for e in all_ents}
+    ent_any_clusters: Dict[str, Set[int]] = {e: set() for e in all_ents}
+
+    for c in clusters:
+        for p in c.processes:
+            if p in proc_cluster_ids:
+                proc_cluster_ids[p].add(c.id)
+            if p not in df.index:
+                continue
+            for e in all_ents:
+                if e not in df.columns:
+                    continue
+                w = _op_weight(df.at[p, e])
+                if w > _OP_PRIORITY["R"]:
+                    ent_cud_clusters[e].add(c.id)
+                if w > 0:
+                    ent_any_clusters[e].add(c.id)
+
+    # RSF: total processes / sum of cluster-spans per process (ideal = 1)
+    total_spans = sum(max(1, len(v)) for v in proc_cluster_ids.values())
+    rsf = len(all_procs) / total_spans if total_spans else 1.0
+
+    # NAIEF: total entities / sum of CUD-cluster-spans per entity (ideal = 1)
+    total_cud = sum(max(1, len(v)) for v in ent_cud_clusters.values())
+    naief = len(all_ents) / total_cud if total_cud else 1.0
+
+    # LCOISF: for each cluster, fraction of entity pairs that share at least one process
+    cohesion_vals = []
+    for c in clusters:
+        procs_in = [p for p in c.processes if p in df.index]
+        ents_in  = [e for e in c.entities  if e in df.columns]
+        if len(ents_in) < 2:
+            cohesion_vals.append(1.0)
+            continue
+        connected = total_ep = 0
+        for i_e, e1 in enumerate(ents_in):
+            for e2 in ents_in[i_e + 1:]:
+                total_ep += 1
+                if any(
+                    _op_weight(df.at[p, e1]) > 0 and _op_weight(df.at[p, e2]) > 0
+                    for p in procs_in
+                ):
+                    connected += 1
+        cohesion_vals.append(connected / total_ep if total_ep else 1.0)
+    lcoisf = sum(cohesion_vals) / len(cohesion_vals) if cohesion_vals else 1.0
+
+    # CPSMF: isolation of atomic (critical) vs end_to_end (non-critical) processes
+    def _is_critical(p: str) -> bool:
+        return process_types.get(p, "atomic") in ("atomic", "ambiguous")
+
+    def _is_critical_cluster(c: Cluster) -> bool:
+        if not c.processes:
+            return True
+        return sum(1 for p in c.processes if _is_critical(p)) >= len(c.processes) / 2
+
+    mismatch = sum(
+        1 for c in clusters
+        for p in c.processes
+        if _is_critical(p) != _is_critical_cluster(c)
+    )
+    cpsmf = 1.0 - (mismatch / len(all_procs)) if all_procs else 1.0
+
+    # DIIEF: total entities / sum of any-operation-cluster-spans per entity (ideal = 1)
+    total_any = sum(max(1, len(v)) for v in ent_any_clusters.values())
+    diief = len(all_ents) / total_any if total_any else 1.0
+
+    return {
+        "RSF":    round(rsf,    3),
+        "NAIEF":  round(naief,  3),
+        "LCOISF": round(lcoisf, 3),
+        "CPSMF":  round(cpsmf,  3),
+        "DIIEF":  round(diief,  3),
+    }
+
+
+def as_is_to_clusters(
+    as_is_mapping: Dict[str, List[str]],
+    crud_matrix: Dict[str, Dict[str, str]],
+) -> List[Cluster]:
+    """
+    Converts an As-Is application mapping { app_name: [process, ...] } into
+    Cluster objects for metric computation.  Entities are inferred from the
+    CRUD matrix — every entity touched (any operation) by a cluster's processes.
+    """
+    df = pd.DataFrame(crud_matrix).T
+    clusters = []
+    for cid, (app, procs) in enumerate(as_is_mapping.items(), start=1):
+        valid = [p for p in procs if p in df.index]
+        ents  = {
+            e for p in valid for e in df.columns
+            if _op_weight(df.at[p, e]) > 0
+        }
+        clusters.append(Cluster(id=cid, name=app, processes=valid, entities=list(ents)))
+    return clusters
 
 
 def run_bsp(matrix_data: Dict[str, Dict[str, str]], density_threshold: float = 0.5, ea_weights: Dict[tuple, float] = None, process_types: Dict[str, str] = None) -> BSPResult:

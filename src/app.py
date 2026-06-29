@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from utils import Matrix
 from utils.generator import Generator
-from utils.bsp import run_bsp
+from utils.bsp import run_bsp, compute_isa_metrics, as_is_to_clusters
 
 app = FastAPI()
 
@@ -197,6 +197,75 @@ async def pipeline(session: Session):
                 for ev in comp.evaluations
             ],
         })
+
+        tobe_metrics = compute_isa_metrics(bsp.clusters, mat.matrix, mat.process_types)
+
+        await session.send({
+            "type": "question",
+            "message": "Do you want to compare this proposed architecture with your current application landscape?",
+            "choices": ["Yes — upload my current landscape", "No — finish here"],
+            "inferred_constraints": [],
+        })
+        ans = await session.wait()
+
+        if ans in ("yes", "y", "Yes — upload my current landscape"):
+            await session.send({"type": "upload_as_is"})
+            raw_csv = await session.wait()
+
+            if raw_csv:
+                content = base64.b64decode(raw_csv).decode("utf-8")
+                as_is_mapping: dict = {}
+                for row in csv.reader(io.StringIO(content)):
+                    if len(row) >= 2:
+                        proc, app = row[0].strip(), row[1].strip()
+                        if proc and app:
+                            as_is_mapping.setdefault(app, []).append(proc)
+
+                asis_clusters = as_is_to_clusters(as_is_mapping, mat.matrix)
+                asis_metrics  = compute_isa_metrics(asis_clusters, mat.matrix, mat.process_types)
+
+                await session.send({
+                    "type": "status",
+                    "message": "Comparing As-Is vs. To-Be architecture…",
+                    "loading": "comparison",
+                })
+                comparison = await gen.compare_as_is_to_be(
+                    as_is_mapping=as_is_mapping,
+                    final_clusters=bsp.clusters,
+                    systems_analysis=sa,
+                    asis_metrics=asis_metrics,
+                    tobe_metrics=tobe_metrics,
+                )
+                await session.send({
+                    "type": "as_is_comparison",
+                    "asis_metrics": asis_metrics,
+                    "tobe_metrics": tobe_metrics,
+                    "overall_summary": comparison.overall_summary,
+                    "estimated_complexity": comparison.estimated_complexity,
+                    "complexity_rationale": comparison.complexity_rationale,
+                    "alignments": [
+                        {
+                            "proposed_cluster_id": a.proposed_cluster_id,
+                            "proposed_system_name": a.proposed_system_name,
+                            "current_applications": a.current_applications,
+                            "processes_to_acquire": a.processes_to_acquire,
+                            "processes_to_release": a.processes_to_release,
+                            "alignment_summary": a.alignment_summary,
+                        }
+                        for a in comparison.alignments
+                    ],
+                    "transformation_steps": [
+                        {
+                            "step_number": s.step_number,
+                            "action": s.action,
+                            "description": s.description,
+                            "rationale": s.rationale,
+                            "affected_processes": s.affected_processes,
+                            "affected_applications": s.affected_applications,
+                        }
+                        for s in comparison.transformation_steps
+                    ],
+                })
 
         await session.send({"type": "complete", "message": "Architecture analysis complete!"})
 

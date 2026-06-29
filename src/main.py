@@ -5,7 +5,7 @@ import json
 import os
 from utils import Matrix, Entity, Process
 from utils import Generator
-from utils.bsp import run_bsp
+from utils.bsp import run_bsp, compute_isa_metrics, as_is_to_clusters
 import fitz
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -260,6 +260,8 @@ async def main():
 
     final_bsp = current_bsp
 
+    tobe_metrics = compute_isa_metrics(final_bsp.clusters, matrix.matrix, matrix.process_types)
+
     # Build a human-readable weight reasoning trail for the LLM
     weight_reasoning_lines = []
     for k, reasoning in accumulated_reasoning.items():
@@ -304,6 +306,82 @@ async def main():
         print(f"  {ev.justification}")
     print("=" * 60)
 
+    # ── As-Is vs. To-Be comparison (optional) ──────────────────────────
+    comparison_result = None
+    do_compare = input("\nDo you want to compare with your current application landscape? (yes/no): ").strip().lower()
+    if do_compare in ("yes", "y"):
+        as_is_path = input("Path to As-Is CSV (two columns: Process, Application): ").strip()
+        if os.path.exists(as_is_path):
+            as_is_mapping: dict = {}
+            with open(as_is_path, mode="r", encoding="utf-8") as f:
+                reader = csv.reader(f)
+                for row in reader:
+                    if len(row) >= 2:
+                        proc, app = row[0].strip(), row[1].strip()
+                        if proc and app:
+                            as_is_mapping.setdefault(app, []).append(proc)
+
+            asis_clusters = as_is_to_clusters(as_is_mapping, matrix.matrix)
+            asis_metrics  = compute_isa_metrics(asis_clusters, matrix.matrix, matrix.process_types)
+
+            print("\n" + "=" * 60)
+            print("ISA METRICS — AS-IS vs. TO-BE")
+            print("=" * 60)
+            metric_explanations = {
+                "RSF":    "avg IS blocks per process         (ideal 1.0 = min coupling)",
+                "NAIEF":  "entity write authority            (ideal 1.0 = single source of truth)",
+                "LCOISF": "cluster cohesion                  (ideal 1.0 = no giant-stain clusters)",
+                "CPSMF":  "critical/non-critical isolation   (ideal 1.0 = perfect separation)",
+                "DIIEF":  "data storage uniqueness           (ideal 1.0 = no entity redundancy)",
+            }
+            print(f"\n{'Metric':<8} {'As-Is':>6} {'To-Be':>6} {'Δ':>7}   Meaning")
+            print("-" * 70)
+            for m, explanation in metric_explanations.items():
+                asis_val  = asis_metrics.get(m, 0.0)
+                tobe_val  = tobe_metrics.get(m, 0.0)
+                delta     = tobe_val - asis_val
+                arrow     = "↑" if delta > 0 else ("↓" if delta < 0 else "=")
+                print(f"{m:<8} {asis_val:>6.3f} {tobe_val:>6.3f} {delta:>+6.3f} {arrow}   {explanation}")
+            print()
+            print("What these metrics mean:")
+            for m, explanation in metric_explanations.items():
+                print(f"  {m}: {explanation}")
+
+            print("\nRunning As-Is vs. To-Be analysis...")
+            comparison_result = await ai.compare_as_is_to_be(
+                as_is_mapping=as_is_mapping,
+                final_clusters=final_bsp.clusters,
+                systems_analysis=systems_analysis,
+                asis_metrics=asis_metrics,
+                tobe_metrics=tobe_metrics,
+            )
+
+            print("\n" + "=" * 60)
+            print("AS-IS vs. TO-BE GAP ANALYSIS")
+            print("=" * 60)
+            print(f"\n{comparison_result.overall_summary}")
+            print(f"\nEstimated complexity: {comparison_result.estimated_complexity}")
+            print(f"  {comparison_result.complexity_rationale}")
+
+            print("\n--- Alignment by proposed system ---")
+            for a in comparison_result.alignments:
+                print(f"\n  [{a.proposed_cluster_id}] {a.proposed_system_name}")
+                print(f"    Current apps : {', '.join(a.current_applications) or '—'}")
+                if a.processes_to_acquire:
+                    print(f"    Move IN      : {', '.join(a.processes_to_acquire)}")
+                if a.processes_to_release:
+                    print(f"    Move OUT     : {', '.join(a.processes_to_release)}")
+                print(f"    {a.alignment_summary}")
+
+            print("\n--- Migration steps ---")
+            for step in comparison_result.transformation_steps:
+                print(f"\n  Step {step.step_number} [{step.action.upper()}]")
+                print(f"    {step.description}")
+                print(f"    Why: {step.rationale}")
+            print("=" * 60)
+        else:
+            print(f"  File not found: {as_is_path}. Skipping comparison.")
+
     with open("full_extraction_log.json", "w") as f:
         json.dump({
             "extraction": final_result.model_dump(),
@@ -343,6 +421,34 @@ async def main():
                 }
                 for ev in ea_compliance.evaluations
             ],
+            "isa_metrics_tobe": tobe_metrics,
+            "as_is_comparison": {
+                "overall_summary": comparison_result.overall_summary,
+                "estimated_complexity": comparison_result.estimated_complexity,
+                "complexity_rationale": comparison_result.complexity_rationale,
+                "alignments": [
+                    {
+                        "proposed_cluster_id": a.proposed_cluster_id,
+                        "proposed_system_name": a.proposed_system_name,
+                        "current_applications": a.current_applications,
+                        "processes_to_acquire": a.processes_to_acquire,
+                        "processes_to_release": a.processes_to_release,
+                        "alignment_summary": a.alignment_summary,
+                    }
+                    for a in comparison_result.alignments
+                ],
+                "transformation_steps": [
+                    {
+                        "step_number": s.step_number,
+                        "action": s.action,
+                        "description": s.description,
+                        "rationale": s.rationale,
+                        "affected_processes": s.affected_processes,
+                        "affected_applications": s.affected_applications,
+                    }
+                    for s in comparison_result.transformation_steps
+                ],
+            } if comparison_result else None,
         }, f, indent=4)
 
     print("Full extraction log updated with clusters and systems analysis!")
