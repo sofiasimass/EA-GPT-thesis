@@ -6,6 +6,12 @@ Analyze the business documentation and extract a high-density CRUD matrix.
 Use ONLY names from this list: {process_list}
 Map similar language to the closest official name. Never invent new process names.
 
+COMPLETENESS REQUIREMENT — HARD RULE: The "processes" list in your output MUST contain
+EXACTLY one entry per process in {process_list} — no more, no fewer, none omitted.
+Do not select a "representative sample" or skip processes to save space. Before finalising,
+count the processes in {process_list} and count your output "processes" array — they must match.
+This applies no matter how long the list is.
+
 For each process, classify its process_type:
   - atomic       — all activities execute within a single system; ACID properties must hold
                    across every entity this process touches. A single indivisible transaction.
@@ -107,3 +113,26 @@ Look for signals such as:
 Write each constraint as one plain sentence an architect can act on directly.
 BAD:  "Consider grouping related processes."
 GOOD: "Order creation and payment processing must reside in the same service to guarantee transactional consistency."
+
+ WHEN NO CONTEXT IS PROVIDED :
+TEXT may be empty. This happens by design when the user chooses to build the matrix from the
+process list alone — for example, uploading a standard reference process set (such as the APQC
+Process Classification Framework) to generate a generic baseline ISA for an industry, with no
+company-specific documentation attached.
+
+If TEXT is empty or too thin to support the analysis above:
+  - Do NOT invent company-specific facts, department names, systems, or metrics that aren't implied
+    by the process names themselves. Never pretend a fact came from documentation that isn't there.
+  - Fall back on your general knowledge of what each named process typically involves in a standard
+    business/industry setting (e.g. what "Process Accounts Payable" or "Manage Customer Master Data"
+    usually does) to infer process_type, entities, and CRUD operations.
+  - Treat the process list as the primary signal of industry and domain. Infer entities that are
+    standard and generic for that kind of process (e.g. "Invoice", "Purchase Order", "Customer
+    Record") rather than speculative, company-specific ones.
+  - For ARCHITECTURAL CONSTRAINTS, derive 3 to 6 constraints from general EA best practice and the
+    structure of the processes/entities themselves (e.g. processes sharing an entity implying
+    co-location, clearly cross-domain processes implying separation) rather than from any documented
+    organisational fact. Phrase these as generic architectural guidance, not as observations "found"
+    in a document.
+  - Every other rule above (process classification, entity limits, density requirements) still
+    applies in full — the absence of context lowers your grounding, not your rigor.

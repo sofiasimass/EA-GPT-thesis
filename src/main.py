@@ -98,6 +98,30 @@ def display_clustered_matrix(result, title="BSP Clustered Matrix"):
     plt.show(block=False)
     plt.pause(0.1)
 
+def review_process_types(process_types: dict) -> dict:
+    names = list(process_types.keys())
+    print("\nProcess classification — this determines cluster boundaries more than anything else:")
+    print("  atomic     = single-system ACID transaction; its written entities get force-merged into one cluster")
+    print("  end_to_end = spans multiple departments/systems; allowed to span clusters")
+    for i, name in enumerate(names, 1):
+        print(f"  [{i}] {name}: {process_types[name]}")
+    print("\nEnter '<number> <atomic|end_to_end|ambiguous>' to override a process, one per line. Blank line to accept and continue.")
+    while True:
+        line = input("> ").strip()
+        if not line:
+            break
+        parts = line.split()
+        if len(parts) != 2 or not parts[0].isdigit():
+            print("  Format: '<number> <atomic|end_to_end|ambiguous>'")
+            continue
+        idx, new_type = int(parts[0]), parts[1].lower()
+        if not (1 <= idx <= len(names)) or new_type not in ("atomic", "end_to_end", "ambiguous"):
+            print("  Invalid number or type.")
+            continue
+        process_types[names[idx - 1]] = new_type
+        print(f"  {names[idx - 1]} -> {new_type}")
+    return process_types
+
 def pick_constraint(inferred_constraints: list[str]) -> str:
     if inferred_constraints:
         print("\nSelect a constraint:")
@@ -119,13 +143,21 @@ def read_inputs():
 
     proc_input = input("Enter processes (comma-separated) OR path to .csv: ").strip()
     if proc_input.lower().endswith('.csv') and os.path.exists(proc_input):
-        with open(proc_input, mode='r', encoding='utf-8') as f:
-            reader = csv.reader(f)
-            processes = [row[0].strip() for row in reader if row and row[0].strip()]
+        try:
+            with open(proc_input, mode='r', encoding='utf-8') as f:
+                reader = csv.reader(f)
+                processes = [row[0].strip() for row in reader if row and row[0].strip()]
+        except UnicodeDecodeError:
+            with open(proc_input, mode='r', encoding='cp1252') as f:
+                reader = csv.reader(f)
+                processes = [row[0].strip() for row in reader if row and row[0].strip()]
     else:
         processes = [p.strip() for p in proc_input.split(',') if p.strip()]
 
-    info_input = input("Enter information text OR path to file (.txt or .pdf): ").strip()
+    info_input = input(
+        "Enter information text OR path to file (.txt or .pdf) "
+        "— leave blank to generate from the process list alone: "
+    ).strip()
     
     if os.path.exists(info_input):
         # Handle PDF
@@ -203,6 +235,8 @@ async def main():
     matrix.export_to_csv(output_csv)
     
     print(f"Matrix generated! {output_csv} contains only the AI-identified data.")
+
+    matrix.process_types = review_process_types(matrix.process_types)
 
     print("Running initial BSP Clustering...")
     initial_bsp = run_bsp(matrix.matrix, process_types=matrix.process_types)

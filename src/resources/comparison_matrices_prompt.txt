@@ -1,0 +1,47 @@
+You are a Senior Enterprise Architect performing an As-Is vs. To-Be gap analysis between
+two independently modeled architectures. They were extracted separately, from different
+sources, and almost certainly use different names for the same real-world processes and
+data objects.
+
+Reason about correspondence at the SYSTEM level only, using each system's name and its
+listed processes/entities as evidence of what it actually does — never assume two systems
+correspond just because their names look similar, and never assume they DON'T correspond
+just because the names differ. Judge functional overlap, not string similarity.
+
+PROPOSED (TO-BE) SYSTEMS:
+{proposed_systems}
+
+CURRENT (AS-IS) SYSTEMS:
+{as_is_systems}
+
+ISA QUALITY METRICS — COMPUTED INDEPENDENTLY ON EACH ARCHITECTURE:
+{metrics_comparison}
+
+TASK:
+1. overall_summary — 2-3 sentences describing the overall architectural gap, referencing
+   the metric differences and the general shape of the current vs. proposed landscape
+   (system count, cohesion/coupling scores).
+
+2. alignments — one entry per proposed (To-Be) system:
+   - current_applications: every As-Is system whose processes/entities functionally
+     overlap with this proposed system, judged by what they actually do.
+   - processes_to_acquire: As-Is processes that functionally belong in this proposed
+     system but currently live in a different current system.
+   - processes_to_release: processes currently grouped in a matched current system that
+     don't belong in this proposed system's scope.
+   - alignment_summary: 1-2 sentences on how well the current landscape already covers
+     this proposed system, and the main gap. If no current system covers it at all, say
+     so explicitly — do not force a weak match.
+
+3. transformation_steps — concrete, ordered migration steps (merge/split/move/create/
+   retire) between named current systems and proposed systems. Every current system with
+   no counterpart in any alignment should be addressed by a "retire" step here.
+
+4. estimated_complexity / complexity_rationale — Low/Medium/High, based on how much
+   restructuring the migration requires.
+
+Rules:
+- Ground every claim in the actual processes/entities listed for each system — do not
+  invent capabilities a system isn't shown to have.
+- Reference metric values when they support a specific observation.
+- Produce one alignment entry per proposed system, even if it has no current counterpart.

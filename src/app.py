@@ -2,6 +2,7 @@ import asyncio
 import base64
 import csv
 import io
+import json
 import os
 from pathlib import Path
 
@@ -16,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from utils import Matrix
 from utils.generator import Generator
-from utils.bsp import run_bsp, compute_isa_metrics, as_is_to_clusters
+from utils.bsp import run_bsp, compute_isa_metrics, matrix_to_clusters
 
 app = FastAPI()
 
@@ -64,18 +65,56 @@ async def pipeline(session: Session):
         result = await gen.extract(context=session.context, process_list=session.processes)
         data = result.model_dump()
 
+        debug_path = Path(__file__).parent / "last_extraction_debug.json"
+        debug_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        print(f"Extraction dumped to {debug_path} — "
+              f"{len(data.get('processes', []))} processes, "
+              f"{len(data.get('entities', []))} entities, "
+              f"{len(data.get('operations', []))} operations")
+
         inferred = [c["description"] for c in data.get("inferred_constraints", [])]
         if inferred:
             await session.send({"type": "constraints_found", "constraints": inferred})
 
         mat = Matrix()
         defined = {e["name"] for e in data.get("entities", [])}
+        skipped_ops = []
         for p in data.get("processes", []):
             mat.set_process_type(p["name"], p["process_type"])
         for op in data.get("operations", []):
             if op["entity_name"] not in defined:
+                skipped_ops.append(op)
                 continue
             mat.add_entry(op["process_name"], op["entity_name"], op["operation"])
+
+        if skipped_ops:
+            print(f"  WARNING: {len(skipped_ops)} operation(s) skipped — "
+                  f"entity_name didn't match any defined entity: "
+                  f"{[(o['process_name'], o['entity_name']) for o in skipped_ops[:10]]}")
+
+        processes_with_no_ops = [p["name"] for p in data.get("processes", []) if p["name"] not in mat.matrix]
+        if processes_with_no_ops:
+            print(f"  WARNING: {len(processes_with_no_ops)} process(es) got zero valid operations "
+                  f"and will be missing from the matrix: {processes_with_no_ops}")
+
+        data_quality_warnings = {
+            "skipped_operations": [
+                {"process_name": o["process_name"], "entity_name": o["entity_name"], "operation": o["operation"]}
+                for o in skipped_ops
+            ],
+            "processes_missing_from_matrix": processes_with_no_ops,
+        }
+        if skipped_ops or processes_with_no_ops:
+            await session.send({
+                "type": "data_quality_warning",
+                "message": (
+                    f"{len(skipped_ops)} operation(s) were dropped (entity name mismatch) and "
+                    f"{len(processes_with_no_ops)} process(es) have no valid operations and are "
+                    f"missing from the matrix below."
+                ),
+                "skipped_operations": data_quality_warnings["skipped_operations"],
+                "processes_missing_from_matrix": processes_with_no_ops,
+            })
 
         df_raw = pd.DataFrame(mat.matrix).T.fillna("")
         await session.send({
@@ -85,8 +124,29 @@ async def pipeline(session: Session):
             "data": df_raw.to_dict(),
         })
 
+        await session.send({
+            "type": "process_type_review",
+            "processes": [
+                {"name": p["name"], "process_type": p["process_type"]}
+                for p in data.get("processes", [])
+                if p["name"] in mat.matrix
+            ],
+        })
+        reviewed = await session.wait()
+        process_type_overrides = {}
+        if isinstance(reviewed, dict):
+            for name, ptype in reviewed.items():
+                if name not in mat.process_types or ptype not in ("atomic", "end_to_end", "ambiguous"):
+                    continue
+                if ptype != mat.process_types[name]:
+                    process_type_overrides[name] = {"from": mat.process_types[name], "to": ptype}
+                mat.set_process_type(name, ptype)
+
         await session.send({"type": "status", "message": "Running BSP clustering…", "loading": "bsp"})
         bsp = run_bsp(mat.matrix, process_types=mat.process_types)
+        initial_bsp = bsp
+        bsp_iterations: list = []
+        iteration_metrics = compute_isa_metrics(bsp.clusters, mat.matrix, mat.process_types)
 
         await session.send({
             "type": "clustering",
@@ -94,6 +154,7 @@ async def pipeline(session: Session):
             "title": "Initial BSP Clustering",
             "clusters": [c.to_dict() for c in bsp.clusters],
             "matrix": _matrix_payload(bsp.reordered_matrix),
+            "metrics": iteration_metrics,
         })
 
         principles_path = Path(__file__).parent / "resources" / "ea_principles.txt"
@@ -134,12 +195,26 @@ async def pipeline(session: Session):
             acc_reasoning.update(r)
 
             bsp = run_bsp(mat.matrix, ea_weights=acc_weights, process_types=mat.process_types)
+            iteration_metrics = compute_isa_metrics(bsp.clusters, mat.matrix, mat.process_types)
             await session.send({
                 "type": "clustering",
                 "iteration": iteration,
                 "title": f"BSP — Iteration {iteration}",
                 "clusters": [c.to_dict() for c in bsp.clusters],
                 "matrix": _matrix_payload(bsp.reordered_matrix),
+                "metrics": iteration_metrics,
+            })
+
+            bsp_iterations.append({
+                "iteration": iteration,
+                "user_constraint": constraint,
+                "ea_weights": {
+                    str(k): {"weight": v, "reasoning": r.get(k, "")}
+                    for k, v in w.items()
+                },
+                "clusters": [c.to_dict() for c in bsp.clusters],
+                "entity_owners": bsp.entity_owners,
+                "metrics": iteration_metrics,
             })
 
         wrl = [
@@ -199,6 +274,8 @@ async def pipeline(session: Session):
         })
 
         tobe_metrics = compute_isa_metrics(bsp.clusters, mat.matrix, mat.process_types)
+        comparison = None
+        asis_metrics = None
 
         await session.send({
             "type": "question",
@@ -209,63 +286,181 @@ async def pipeline(session: Session):
         ans = await session.wait()
 
         if ans in ("yes", "y", "Yes — upload my current landscape"):
-            await session.send({"type": "upload_as_is"})
+            await session.send({
+                "type": "upload_as_is",
+                "format": "Process,Entity,Operation,System,ProcessType",
+                "format_notes": (
+                    "One row per CRUD entry in your CURRENT landscape's own CRUD matrix — independent "
+                    "process/entity vocabulary, does not need to match the proposed architecture. "
+                    "Operation is one of C/R/U/D. System is the current application/system that process "
+                    "belongs to. ProcessType is one of atomic/end_to_end/ambiguous."
+                ),
+            })
             raw_csv = await session.wait()
 
             if raw_csv:
                 content = base64.b64decode(raw_csv).decode("utf-8")
-                as_is_mapping: dict = {}
-                for row in csv.reader(io.StringIO(content)):
-                    if len(row) >= 2:
-                        proc, app = row[0].strip(), row[1].strip()
-                        if proc and app:
-                            as_is_mapping.setdefault(app, []).append(proc)
+                as_is_matrix: dict = {}
+                as_is_process_system: dict = {}
+                as_is_process_types: dict = {}
+                parse_errors = []
 
-                asis_clusters = as_is_to_clusters(as_is_mapping, mat.matrix)
-                asis_metrics  = compute_isa_metrics(asis_clusters, mat.matrix, mat.process_types)
+                rows = list(csv.reader(io.StringIO(content)))
+                if rows and rows[0] and rows[0][0].strip().lower() == "process":
+                    rows = rows[1:]
 
-                await session.send({
-                    "type": "status",
-                    "message": "Comparing As-Is vs. To-Be architecture…",
-                    "loading": "comparison",
-                })
-                comparison = await gen.compare_as_is_to_be(
-                    as_is_mapping=as_is_mapping,
-                    final_clusters=bsp.clusters,
-                    systems_analysis=sa,
-                    asis_metrics=asis_metrics,
-                    tobe_metrics=tobe_metrics,
-                )
-                await session.send({
-                    "type": "as_is_comparison",
-                    "asis_metrics": asis_metrics,
-                    "tobe_metrics": tobe_metrics,
-                    "overall_summary": comparison.overall_summary,
-                    "estimated_complexity": comparison.estimated_complexity,
-                    "complexity_rationale": comparison.complexity_rationale,
-                    "alignments": [
-                        {
-                            "proposed_cluster_id": a.proposed_cluster_id,
-                            "proposed_system_name": a.proposed_system_name,
-                            "current_applications": a.current_applications,
-                            "processes_to_acquire": a.processes_to_acquire,
-                            "processes_to_release": a.processes_to_release,
-                            "alignment_summary": a.alignment_summary,
-                        }
-                        for a in comparison.alignments
+                for i, row in enumerate(rows, start=1):
+                    if not row or not row[0].strip():
+                        continue
+                    if len(row) < 5:
+                        parse_errors.append(f"row {i}: expected 5 columns (Process,Entity,Operation,System,ProcessType), got {len(row)}")
+                        continue
+                    proc, ent, op, system, ptype = (c.strip() for c in row[:5])
+                    if not proc or not ent or not op or not system:
+                        parse_errors.append(f"row {i}: Process, Entity, Operation, and System are all required")
+                        continue
+                    if ptype not in ("atomic", "end_to_end", "ambiguous"):
+                        parse_errors.append(f"row {i}: ProcessType '{ptype}' for '{proc}' must be one of atomic/end_to_end/ambiguous")
+                        continue
+                    as_is_matrix.setdefault(proc, {})[ent] = op.upper()
+                    as_is_process_system[proc] = system
+                    as_is_process_types[proc] = ptype
+
+                if parse_errors or not as_is_matrix:
+                    await session.send({
+                        "type": "error",
+                        "message": (
+                            "As-Is CSV could not be parsed — skipping the comparison. Expected columns: "
+                            "Process,Entity,Operation,System,ProcessType (ProcessType one of "
+                            "atomic/end_to_end/ambiguous). Issues:\n" + "\n".join(parse_errors[:20])
+                        ),
+                    })
+                else:
+                    as_is_clusters = matrix_to_clusters(as_is_matrix, as_is_process_system)
+                    asis_metrics = compute_isa_metrics(as_is_clusters, as_is_matrix, as_is_process_types)
+
+                    await session.send({
+                        "type": "isa_metrics_comparison",
+                        "asis_metrics": asis_metrics,
+                        "tobe_metrics": tobe_metrics,
+                    })
+
+                    await session.send({
+                        "type": "status",
+                        "message": "Running As-Is vs. To-Be gap analysis…",
+                        "loading": "comparison",
+                    })
+                    comparison = await gen.compare_as_is_to_be_matrices(
+                        as_is_clusters=as_is_clusters,
+                        to_be_clusters=bsp.clusters,
+                        systems_analysis=sa,
+                        asis_metrics=asis_metrics,
+                        tobe_metrics=tobe_metrics,
+                    )
+                    await session.send({
+                        "type": "as_is_comparison",
+                        "asis_metrics": asis_metrics,
+                        "tobe_metrics": tobe_metrics,
+                        "overall_summary": comparison.overall_summary,
+                        "estimated_complexity": comparison.estimated_complexity,
+                        "complexity_rationale": comparison.complexity_rationale,
+                        "alignments": [
+                            {
+                                "proposed_cluster_id": a.proposed_cluster_id,
+                                "proposed_system_name": a.proposed_system_name,
+                                "current_applications": a.current_applications,
+                                "processes_to_acquire": a.processes_to_acquire,
+                                "processes_to_release": a.processes_to_release,
+                                "alignment_summary": a.alignment_summary,
+                            }
+                            for a in comparison.alignments
+                        ],
+                        "transformation_steps": [
+                            {
+                                "step_number": s.step_number,
+                                "action": s.action,
+                                "description": s.description,
+                                "rationale": s.rationale,
+                                "affected_processes": s.affected_processes,
+                                "affected_applications": s.affected_applications,
+                            }
+                            for s in comparison.transformation_steps
+                        ],
+                    })
+
+        log_data = {
+            "extraction": data,
+            "data_quality_warnings": data_quality_warnings,
+            "process_type_overrides": process_type_overrides,
+            "initial_bsp": {
+                "clusters": [c.to_dict() for c in initial_bsp.clusters],
+                "entity_owners": initial_bsp.entity_owners,
+            },
+            "bsp_iterations": bsp_iterations,
+            "final_bsp": {
+                "clusters": [c.to_dict() for c in bsp.clusters],
+                "entity_owners": bsp.entity_owners,
+                "ea_weights": {
+                    str(k): {"weight": v, "reasoning": acc_reasoning.get(k, "")}
+                    for k, v in acc_weights.items()
+                },
+                "user_constraints": acc_constraints.strip(),
+            },
+            "systems_analysis": [
+                {
+                    "cluster_id": s.cluster_id,
+                    "suggested_name": s.suggested_name,
+                    "description": s.description,
+                    "build_or_buy": s.build_or_buy,
+                    "build_or_buy_rationale": s.build_or_buy_rationale,
+                    "market_options": [
+                        {"name": o.name, "fit_rationale": o.fit_rationale}
+                        for o in s.market_options
                     ],
-                    "transformation_steps": [
-                        {
-                            "step_number": s.step_number,
-                            "action": s.action,
-                            "description": s.description,
-                            "rationale": s.rationale,
-                            "affected_processes": s.affected_processes,
-                            "affected_applications": s.affected_applications,
-                        }
-                        for s in comparison.transformation_steps
-                    ],
-                })
+                }
+                for s in sa.systems
+            ],
+            "ea_compliance": [
+                {
+                    "principle": ev.principle,
+                    "status": ev.status,
+                    "justification": ev.justification,
+                }
+                for ev in comp.evaluations
+            ],
+            "isa_metrics_tobe": tobe_metrics,
+            "isa_metrics_asis": asis_metrics,
+            "as_is_comparison": {
+                "overall_summary": comparison.overall_summary,
+                "estimated_complexity": comparison.estimated_complexity,
+                "complexity_rationale": comparison.complexity_rationale,
+                "alignments": [
+                    {
+                        "proposed_cluster_id": a.proposed_cluster_id,
+                        "proposed_system_name": a.proposed_system_name,
+                        "current_applications": a.current_applications,
+                        "processes_to_acquire": a.processes_to_acquire,
+                        "processes_to_release": a.processes_to_release,
+                        "alignment_summary": a.alignment_summary,
+                    }
+                    for a in comparison.alignments
+                ],
+                "transformation_steps": [
+                    {
+                        "step_number": s.step_number,
+                        "action": s.action,
+                        "description": s.description,
+                        "rationale": s.rationale,
+                        "affected_processes": s.affected_processes,
+                        "affected_applications": s.affected_applications,
+                    }
+                    for s in comparison.transformation_steps
+                ],
+            } if comparison else None,
+        }
+        log_path = Path(__file__).parent / "log.json"
+        log_path.write_text(json.dumps(log_data, indent=2), encoding="utf-8")
+        print(f"Full run log written to {log_path}")
 
         await session.send({"type": "complete", "message": "Architecture analysis complete!"})
 

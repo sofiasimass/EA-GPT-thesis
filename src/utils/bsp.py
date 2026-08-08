@@ -488,8 +488,13 @@ def _absorb_pure_readers(clusters: List[Cluster], df: pd.DataFrame, process_type
                 c.processes.remove(proc)
                 best_cluster.processes.append(proc)
 
-    # Remove any now-empty clusters
-    return [c for c in clusters if c.processes]
+    # Remove any now-empty clusters, then renumber so IDs stay contiguous 1..N —
+    # otherwise a dropped cluster leaves a gap (e.g. 1,2,3,5,6…) that every
+    # downstream LLM call and the UI would otherwise have to explain away.
+    survivors = [c for c in clusters if c.processes]
+    for new_id, c in enumerate(survivors, start=1):
+        c.id = new_id
+    return survivors
 
 def _compute_e2e_span(df: pd.DataFrame, clusters: List[Cluster], process_types: Dict[str, str]) -> Dict[str, List[int]]:
     """For each E2E process, return the list of cluster IDs whose entities it touches."""
@@ -621,6 +626,30 @@ def as_is_to_clusters(
             if _op_weight(df.at[p, e]) > 0
         }
         clusters.append(Cluster(id=cid, name=app, processes=valid, entities=list(ents)))
+    return clusters
+
+
+def matrix_to_clusters(
+    matrix_data: Dict[str, Dict[str, str]],
+    process_system: Dict[str, str],
+) -> List[Cluster]:
+    """
+    Groups a self-contained CRUD matrix into Cluster objects using an explicit
+    process -> system/application mapping, instead of computing clusters via BSP.
+    Used for an independently-modeled As-Is landscape: the matrix and the system
+    grouping both come from the same source (the user's own CSV), so — unlike
+    as_is_to_clusters — nothing here is filtered against a *different* matrix's
+    process list, and no process/entity is ever silently dropped.
+    """
+    df = pd.DataFrame(matrix_data).T
+    systems: Dict[str, List[str]] = defaultdict(list)
+    for proc, system in process_system.items():
+        systems[system].append(proc)
+
+    clusters = []
+    for cid, (system, procs) in enumerate(systems.items(), start=1):
+        ents = {e for p in procs for e in df.columns if _op_weight(df.at[p, e]) > 0}
+        clusters.append(Cluster(id=cid, name=system, processes=list(procs), entities=list(ents)))
     return clusters
 
 

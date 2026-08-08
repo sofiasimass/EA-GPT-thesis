@@ -354,6 +354,27 @@ body {
   color: var(--text2);
 }
 
+.iter-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 14px 12px;
+}
+.iter-metric-chip {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 11px;
+  cursor: default;
+}
+.iter-metric-key { font-weight: 700; color: var(--text3); letter-spacing: .3px; }
+.iter-metric-val { font-size: 13px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+.iter-delta { font-size: 10.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
 /* ────── Question / choice ────── */
 .qcard {
   background: var(--bg2);
@@ -738,6 +759,143 @@ body {
 .start-ubtn:disabled { opacity: .35; cursor: not-allowed; }
 .start-ubtn:not(:disabled):hover { background: rgba(74,226,150,.08); }
 
+/* ────── Context input (upload / write / skip) ────── */
+.ctx-section {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ctx-section-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.ctx-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text2);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.opt-tag {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text3);
+  background: var(--bg4);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 6px;
+  text-transform: uppercase;
+  letter-spacing: .3px;
+}
+.ctx-seg { display: flex; gap: 6px; flex-wrap: wrap; }
+.cseg-btn {
+  background: var(--bg4);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 7px 12px;
+  font-size: 12px;
+  color: var(--text2);
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color .15s, color .15s, background .15s;
+}
+.cseg-btn:hover { border-color: rgba(74,226,150,.4); color: var(--text); }
+.cseg-btn.active {
+  background: rgba(74,226,150,.12);
+  border-color: rgba(74,226,150,.5);
+  color: var(--accent);
+}
+.ctx-file-btn { width: 100%; }
+.ctx-textarea {
+  width: 100%;
+  min-height: 74px;
+  max-height: 180px;
+  resize: vertical;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  line-height: 1.5;
+}
+.ctx-textarea:focus { border-color: rgba(74,226,150,.5); }
+.ctx-textarea::placeholder { color: var(--text3); }
+.ctx-none-note {
+  font-size: 12px;
+  color: var(--text3);
+  font-style: italic;
+  padding: 4px 2px;
+}
+
+/* info hover button ("i") */
+.info-btn {
+  position: relative;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 1px solid var(--text3);
+  color: var(--text3);
+  font-size: 10px;
+  font-style: italic;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: help;
+  flex-shrink: 0;
+  transition: border-color .15s, color .15s;
+}
+.info-btn:hover, .info-btn:focus {
+  border-color: var(--accent);
+  color: var(--accent);
+  outline: none;
+}
+.info-btn .tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 260px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--rs);
+  padding: 10px 12px;
+  font-size: 11.5px;
+  font-weight: 400;
+  font-style: normal;
+  line-height: 1.5;
+  color: var(--text2);
+  box-shadow: 0 8px 28px rgba(0,0,0,.45);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity .15s;
+  z-index: 300;
+  pointer-events: none;
+}
+.info-btn:hover .tooltip, .info-btn:focus .tooltip {
+  opacity: 1;
+  visibility: visible;
+}
+.info-btn .tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: var(--border);
+}
+
 /* ────── As-Is upload card ────── */
 .asis-upload-card {
   background: var(--bg2);
@@ -816,6 +974,24 @@ body {
 .cx-med  { background: rgba(251,191,36,.12); color: var(--c-u); border: 1px solid rgba(251,191,36,.25); }
 .cx-high { background: rgba(248,113,113,.12); color: var(--c-d); border: 1px solid rgba(248,113,113,.25); }
 
+.dq-warn-card { background: rgba(251,191,36,.06); border: 1px solid rgba(251,191,36,.3); border-radius: var(--r); padding: 14px; width: 100%; }
+.dq-warn-card p { font-size: 13px; color: #fbbf24; line-height: 1.55; white-space: pre-wrap; }
+
+/* ────── Process-type review ────── */
+.ptype-list { display: flex; flex-direction: column; }
+.ptype-row { display: flex; gap: 10px; align-items: center; justify-content: space-between; padding: 8px 0; border-top: 1px solid var(--border); }
+.ptype-row:first-child { border-top: none; }
+.ptype-name { font-size: 12px; color: var(--text); flex: 1; }
+.ptype-select {
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .3px;
+  background: var(--bg2); color: var(--text); border: 1px solid var(--border); border-radius: 6px;
+  padding: 5px 8px; cursor: pointer; flex-shrink: 0;
+}
+.ptype-select.pt-atomic { color: var(--c-c); border-color: rgba(74,226,150,.35); }
+.ptype-select.pt-end_to_end { color: var(--c-r); border-color: rgba(96,165,250,.35); }
+.ptype-select.pt-ambiguous { color: var(--c-u); border-color: rgba(251,191,36,.35); }
+.ptype-changed { font-size: 9px; color: var(--text3); text-transform: uppercase; letter-spacing: .3px; margin-left: 6px; }
+
 /* misc */
 .hidden { display: none !important; }
 svg { display: block; }
@@ -831,7 +1007,7 @@ svg { display: block; }
 
   <div class="landing-col">
     <h1>Your <span class="hi">AI tool</span> to build an<br/>Information Systems<br/>Architecture.</h1>
-    <p>Upload your business processes and company context — EA-GPT will extract a CRUD matrix, run BSP clustering, and help you design a compliant information systems landscape.</p>
+    <p>Upload your business processes — with or without company context — and EA-GPT will extract a CRUD matrix, run BSP clustering, and help you design a compliant information systems landscape.</p>
     <button class="btn-start" onclick="startChat()">
       <span>Start</span>
       <span>→</span>
@@ -852,7 +1028,7 @@ svg { display: block; }
       <div class="msg-inner">
         <div class="ai-text">
           <strong style="font-size:22px;font-weight:700;display:block;margin-bottom:8px">Lets start.</strong>
-          To build an ISA please upload your company's business processes and overall context using the buttons below.
+          To build an ISA, upload your company's business processes below. Context is optional — attach a file, write it directly, or skip it to generate a matrix from the process names alone.
         </div>
       </div>
     </div>
@@ -864,14 +1040,38 @@ svg { display: block; }
       <!-- Upload mode: shown at start -->
       <div id="upload-mode">
         <div class="file-chips-row" id="fileChips"></div>
+
+        <div class="ctx-section">
+          <div class="ctx-section-head">
+            <span class="ctx-section-title">Context <span class="opt-tag">optional</span></span>
+            <span class="info-btn" tabindex="0">i
+              <span class="tooltip">Context grounds the CRUD matrix in your real business documentation. Without it, EA-GPT relies only on the process names and its own general knowledge of similar processes — this works reasonably well for standard reference lists (e.g. APQC), but for company-specific processes the results may be weaker and more generic than with real context.</span>
+            </span>
+          </div>
+          <div class="ctx-seg" role="tablist">
+            <button type="button" class="cseg-btn active" data-mode="file" onclick="setCtxMode('file')">📎 Upload file</button>
+            <button type="button" class="cseg-btn" data-mode="text" onclick="setCtxMode('text')">✍️ Write text</button>
+            <button type="button" class="cseg-btn" data-mode="none" onclick="setCtxMode('none')">🚫 No context</button>
+          </div>
+
+          <button class="ubtn ctx-file-btn" id="ctxBtn" onclick="triggerUpload('context')">
+            <span class="ubtn-icon">📎</span>
+            <div class="ubtn-text"><strong>Context</strong><small>.txt or .pdf</small></div>
+          </button>
+
+          <textarea class="ctx-textarea hidden" id="ctxTextarea"
+            placeholder="Write or paste your company / business context here…"
+            oninput="onCtxTextInput(this)"></textarea>
+
+          <div class="ctx-none-note hidden" id="ctxNoneNote">
+            No context will be submitted — EA-GPT will generate the matrix from the process names alone.
+          </div>
+        </div>
+
         <div class="upload-btns">
           <button class="ubtn" id="csvBtn" onclick="triggerUpload('csv')">
             <span class="ubtn-icon">📄</span>
             <div class="ubtn-text"><strong>Processes</strong><small>.csv file</small></div>
-          </button>
-          <button class="ubtn" id="ctxBtn" onclick="triggerUpload('context')">
-            <span class="ubtn-icon">📎</span>
-            <div class="ubtn-text"><strong>Context</strong><small>.txt or .pdf</small></div>
           </button>
           <button class="ubtn start-ubtn" id="startBtn" onclick="startPipeline()" disabled>
             Start Analysis →
@@ -1055,7 +1255,9 @@ const state = {
   sid: crypto.randomUUID(),
   csvFile: null,       // { name, b64 }
   ctxFile: null,       // { name, b64, type }
-  stage: 'idle',       // idle | running | question | pick_constraint
+  ctxText: '',         // user-typed context (ctxMode === 'text')
+  ctxMode: 'file',      // 'file' | 'text' | 'none'
+  stage: 'idle',       // idle | running | question | pick_constraint | ptype_review
   inferred: [],
   started: false,
 };
@@ -1066,6 +1268,7 @@ const CLUSTER_COLORS = [
 
 let currentLoader    = null; // active .mloader-wrap
 let currentStatusRow = null; // entire msg-row of the last status message
+let lastIterationMetrics = null; // previous clustering iteration's ISA metrics, for deltas
 
 function stopLoader() {
   if (currentLoader) {
@@ -1108,12 +1311,15 @@ function handleMsg(msg) {
     case 'status':            appendStatus(msg); break;
     case 'constraints_found': appendConstraintsFound(msg.constraints); break;
     case 'crud_matrix':       appendCrudMatrix(msg); break;
+    case 'process_type_review': appendProcessTypeReview(msg); break;
     case 'clustering':        appendClustering(msg); break;
     case 'question':          appendQuestion(msg); break;
     case 'pick_constraint':   appendConstraintPicker(msg.inferred); break;
     case 'systems_analysis':  appendSystemsAnalysis(msg.systems); break;
     case 'ea_compliance':     appendEaCompliance(msg.evaluations); break;
-    case 'upload_as_is':      appendAsIsUpload(); break;
+    case 'data_quality_warning': appendDataQualityWarning(msg); break;
+    case 'upload_as_is':      appendAsIsUpload(msg); break;
+    case 'isa_metrics_comparison': appendIsaMetrics(msg); break;
     case 'as_is_comparison':  appendAsIsComparison(msg); break;
     case 'complete':          appendDone(msg.message); break;
     case 'error':             appendError(msg.message); break;
@@ -1197,6 +1403,80 @@ function appendCrudMatrix(msg) {
   addAiRow(wrap, 'wide');
 }
 
+function appendProcessTypeReview(msg) {
+  stopLoader();
+  state.stage = 'ptype_review';
+  const card = document.createElement('div');
+  card.className = 'qcard';
+  card.id = 'ptype-card';
+
+  const TYPES = ['atomic', 'end_to_end', 'ambiguous'];
+  const rows = msg.processes.map((p, i) => `
+    <div class="ptype-row">
+      <span class="ptype-name">${escHtml(p.name)}</span>
+      <select class="ptype-select pt-${p.process_type}" data-i="${i}" data-original="${p.process_type}">
+        ${TYPES.map(t => `<option value="${t}" ${t === p.process_type ? 'selected' : ''}>${t}</option>`).join('')}
+      </select>
+    </div>`).join('');
+
+  card.innerHTML = `
+    <p>Before clustering, review how each process was classified. <strong>Atomic</strong> processes get their
+    written entities force-merged into one cluster (ACID); <strong>end_to_end</strong> processes are allowed to
+    span clusters. This call determines cluster boundaries more than anything else — override any that don't
+    match how your organisation actually runs:</p>
+    <div class="ptype-list">${rows}</div>
+    <div class="choices" style="margin-top:14px">
+      <button class="choice yes-btn" id="ptype-confirm-btn">Confirm and continue →</button>
+    </div>`;
+  addAiRow(card, 'wide');
+
+  card.querySelectorAll('.ptype-select').forEach(sel => {
+    sel.addEventListener('change', () => {
+      sel.className = 'ptype-select pt-' + sel.value;
+    });
+  });
+
+  document.getElementById('ptype-confirm-btn').onclick = () => {
+    const overrides = {};
+    let changedCount = 0;
+    card.querySelectorAll('.ptype-select').forEach(sel => {
+      const p = msg.processes[parseInt(sel.dataset.i, 10)];
+      overrides[p.name] = sel.value;
+      if (sel.value !== sel.dataset.original) changedCount++;
+    });
+    card.querySelectorAll('button, select').forEach(el => el.disabled = true);
+    addUserBubble(changedCount ? `✓ Confirmed classifications — ${changedCount} overridden` : '✓ Confirmed classifications as proposed');
+    state.ws.send(JSON.stringify({ type: 'answer', value: overrides }));
+    state.stage = 'running';
+  };
+}
+
+// One chip per ISA metric for this clustering iteration, with a delta vs. the
+// previous iteration when one exists — all 5 metrics are higher-is-better (ideal 1.0),
+// so a green uptick is always an improvement and a red downtick always a regression.
+function buildIterationMetrics(metrics, prevMetrics) {
+  const wrap = document.createElement('div');
+  wrap.className = 'iter-metrics';
+  METRIC_LEGEND.forEach(({ key, label }) => {
+    const val = metrics[key] ?? 0;
+    const chip = document.createElement('div');
+    chip.className = 'iter-metric-chip';
+    chip.title = label;
+    let deltaHtml = '';
+    if (prevMetrics && prevMetrics[key] !== undefined) {
+      const d = val - prevMetrics[key];
+      if (Math.abs(d) > 0.0005) {
+        const cls = d > 0 ? 'delta-up' : 'delta-down';
+        const arrow = d > 0 ? '↑' : '↓';
+        deltaHtml = `<span class="iter-delta ${cls}">${d >= 0 ? '+' : ''}${d.toFixed(3)} ${arrow}</span>`;
+      }
+    }
+    chip.innerHTML = `<span class="iter-metric-key">${escHtml(key)}</span><span class="iter-metric-val">${val.toFixed(3)}</span>${deltaHtml}`;
+    wrap.appendChild(chip);
+  });
+  return wrap;
+}
+
 function appendClustering(msg) {
   stopLoader();
   const wrap = document.createElement('div');
@@ -1207,6 +1487,14 @@ function appendClustering(msg) {
   head.className = 'card-head';
   head.textContent = `⬡ ${msg.title} — ${msg.clusters.length} cluster(s)`;
   wrap.appendChild(head);
+
+  // ISA quality metrics for this iteration — lets the architect judge "am I satisfied?"
+  // with a quality signal instead of gut feel, and see immediately what an added
+  // constraint traded off (e.g. cohesion up, data-uniqueness down).
+  if (msg.metrics) {
+    wrap.appendChild(buildIterationMetrics(msg.metrics, lastIterationMetrics));
+    lastIterationMetrics = msg.metrics;
+  }
 
   // Cluster chips
   const chips = document.createElement('div');
@@ -1337,6 +1625,7 @@ function appendSystemsAnalysis(systems) {
   systems.forEach(s => {
     const bb = s.build_or_buy;
     const badgeClass = bb === 'Build' ? 'b-build' : bb === 'Buy' ? 'b-buy' : 'b-hybrid';
+    const col = CLUSTER_COLORS[(s.cluster_id - 1) % CLUSTER_COLORS.length];
     const mkt = s.market_options.map(o =>
       `<div class="smkt"><strong>${escHtml(o.name)}</strong><span>${escHtml(o.fit_rationale)}</span></div>`
     ).join('');
@@ -1344,7 +1633,10 @@ function appendSystemsAnalysis(systems) {
     card.className = 'scard';
     card.innerHTML = `
       <div class="scard-top">
-        <h3>${escHtml(s.suggested_name)}</h3>
+        <div>
+          <div style="font-size:10px;font-weight:700;color:${col};text-transform:uppercase;letter-spacing:.4px;margin-bottom:2px">Cluster ${s.cluster_id}</div>
+          <h3>${escHtml(s.suggested_name)}</h3>
+        </div>
         <span class="badge ${badgeClass}">${escHtml(bb)}</span>
       </div>
       <div class="sdesc">${escHtml(s.description)}</div>
@@ -1388,6 +1680,13 @@ function appendEaCompliance(evaluations) {
   addAiRow(wrap);
 }
 
+function appendDataQualityWarning(msg) {
+  const card = document.createElement('div');
+  card.className = 'dq-warn-card';
+  card.innerHTML = `<p>⚠ ${escHtml(msg.message)}</p>`;
+  addAiRow(card, 'wide');
+}
+
 function appendDone(message) {
   stopLoader();
   state.stage = 'done';
@@ -1414,7 +1713,7 @@ function makeMatrixLoader(type) {
     weights:    'Computing EA weights…',
     systems:    'Generating systems analysis…',
     compliance: 'Evaluating EA compliance…',
-    comparison: 'Comparing As-Is vs. To-Be architecture…',
+    comparison: 'Running As-Is vs. To-Be gap analysis…',
   };
   const ROWS = 7, COLS = 14;
   const wrap = document.createElement('div');
@@ -1618,7 +1917,7 @@ function renderFileChips() {
     if (csvBtn) csvBtn.querySelector('small').textContent = '.csv file';
   }
 
-  if (state.ctxFile) {
+  if (state.ctxMode === 'file' && state.ctxFile) {
     row.appendChild(makeChip('📎 ' + state.ctxFile.name, () => { state.ctxFile = null; renderFileChips(); }));
     ctxBtn?.classList.add('uploaded');
     if (ctxBtn) ctxBtn.querySelector('small').textContent = state.ctxFile.name;
@@ -1627,7 +1926,8 @@ function renderFileChips() {
     if (ctxBtn) ctxBtn.querySelector('small').textContent = '.txt or .pdf';
   }
 
-  if (startBtn) startBtn.disabled = !state.csvFile && !state.ctxFile;
+  // Processes are mandatory; context (in any mode, including "none") is optional.
+  if (startBtn) startBtn.disabled = !state.csvFile;
 }
 
 function makeChip(label, onRemove) {
@@ -1638,20 +1938,38 @@ function makeChip(label, onRemove) {
   return chip;
 }
 
+// ───────────────────────── Context mode ─────────────────────────
+function setCtxMode(mode) {
+  state.ctxMode = mode;
+  document.querySelectorAll('.cseg-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+  document.getElementById('ctxBtn').classList.toggle('hidden', mode !== 'file');
+  document.getElementById('ctxTextarea').classList.toggle('hidden', mode !== 'text');
+  document.getElementById('ctxNoneNote').classList.toggle('hidden', mode !== 'none');
+  renderFileChips();
+}
+
+function onCtxTextInput(el) {
+  state.ctxText = el.value;
+}
+
 // ───────────────────────── Start pipeline ─────────────────────────
 function startPipeline() {
-  if (!state.csvFile && !state.ctxFile) return;
+  if (!state.csvFile) return;
 
-  const payload = { type: 'start' };
-  if (state.csvFile) payload.csv_b64 = state.csvFile.b64;
-  if (state.ctxFile) {
+  const payload = { type: 'start', csv_b64: state.csvFile.b64 };
+  const parts = ['📄 ' + state.csvFile.name];
+
+  if (state.ctxMode === 'file' && state.ctxFile) {
     if (state.ctxFile.ftype === 'pdf') payload.pdf_b64 = state.ctxFile.b64;
     else payload.txt_b64 = state.ctxFile.b64;
+    parts.push('📎 ' + state.ctxFile.name);
+  } else if (state.ctxMode === 'text' && state.ctxText.trim()) {
+    payload.context_text = state.ctxText.trim();
+    parts.push(`✍️ Written context (${state.ctxText.trim().length} chars)`);
+  } else {
+    parts.push('🚫 No context');
   }
 
-  const parts = [];
-  if (state.csvFile) parts.push('📄 ' + state.csvFile.name);
-  if (state.ctxFile) parts.push('📎 ' + state.ctxFile.name);
   addUserBubble(parts.join('   '));
 
   state.ws.send(JSON.stringify(payload));
@@ -1659,6 +1977,7 @@ function startPipeline() {
   state.stage = 'running';
   state.csvFile = null;
   state.ctxFile = null;
+  state.ctxText = '';
 
   setInputMode('none');
 }
@@ -1684,18 +2003,21 @@ function autoResize(el) {
 }
 
 // ───────────────────────── As-Is upload ─────────────────────────
-function appendAsIsUpload() {
+function appendAsIsUpload(msg) {
   state.stage = 'as_is_upload';
+  const format = (msg && msg.format) || 'Process,Entity,Operation,System,ProcessType';
+  const notes = (msg && msg.format_notes) ||
+    'One row per CRUD entry in your current landscape\'s own CRUD matrix — independent vocabulary, does not need to match the proposed architecture.';
   const card = document.createElement('div');
   card.className = 'asis-upload-card';
   card.id = 'as-is-upload-card';
   card.innerHTML = `
-    <p>Upload your current application landscape as a <strong>CSV with two columns: Process, Application</strong></p>
-    <small>Example row: "Order Management, ERP System"</small>
+    <p>Upload your current landscape as a <strong>CSV: ${escHtml(format)}</strong></p>
+    <small>${escHtml(notes)}</small>
     <div class="upload-btns">
       <button class="ubtn" onclick="document.getElementById('fi-as-is').click()">
         <span class="ubtn-icon">📊</span>
-        <div class="ubtn-text"><strong>As-Is Matrix</strong><small>Process, Application (.csv)</small></div>
+        <div class="ubtn-text"><strong>As-Is Matrix</strong><small>clustered CRUD matrix (.csv)</small></div>
       </button>
     </div>`;
   addAiRow(card);
@@ -1710,31 +2032,14 @@ const METRIC_LEGEND = [
   { key: 'DIIEF',  label: 'Different Implementations of Information Entity Factor', desc: 'Measures data-storage redundancy: how many systems store or access each entity. Ideal = 1.0 — each entity exists in exactly one location, with no duplication across systems.' },
 ];
 
-function appendAsIsComparison(msg) {
-  stopLoader();
-  const wrap = document.createElement('div');
-  wrap.style.cssText = 'display:flex;flex-direction:column;gap:16px;width:100%';
-
-  // ── Header + complexity ──
-  const cx = msg.estimated_complexity;
-  const cxClass = cx === 'Low' ? 'cx-low' : cx === 'Medium' ? 'cx-med' : 'cx-high';
-  const hdr = document.createElement('div');
-  hdr.innerHTML = `
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-      <span style="font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.2px">↔ As-Is vs. To-Be Gap Analysis</span>
-      <span class="badge ${cxClass}">${escHtml(cx)} complexity</span>
-    </div>
-    <div style="font-size:13px;color:var(--text);line-height:1.65;margin-bottom:4px">${escHtml(msg.overall_summary)}</div>
-    <div style="font-size:11px;color:var(--text3);line-height:1.55">${escHtml(msg.complexity_rationale)}</div>`;
-  wrap.appendChild(hdr);
-
-  // ── Metrics table ──
+// Shared by the standalone isa_metrics_comparison card and (formerly) the gap-analysis card.
+function buildMetricsTable(asisMetrics, tobeMetrics) {
   const mwrap = document.createElement('div');
   mwrap.className = 'metrics-wrap';
   let tableRows = '';
   METRIC_LEGEND.forEach(({ key }) => {
-    const av = (msg.asis_metrics[key] ?? 0);
-    const tv = (msg.tobe_metrics[key] ?? 0);
+    const av = (asisMetrics[key] ?? 0);
+    const tv = (tobeMetrics[key] ?? 0);
     const d  = tv - av;
     const dClass = d > 0.001 ? 'delta-up' : d < -0.001 ? 'delta-down' : 'delta-flat';
     const arrow  = d > 0.001 ? '↑' : d < -0.001 ? '↓' : '=';
@@ -1761,7 +2066,41 @@ function appendAsIsComparison(msg) {
           </div>`).join('')}
       </div>
     </details>`;
-  wrap.appendChild(mwrap);
+  return mwrap;
+}
+
+// Sent right after both matrices are built, before the gap analysis —
+// both landscapes are metered independently and in full, nothing dropped.
+function appendIsaMetrics(msg) {
+  stopLoader();
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex;flex-direction:column;gap:8px;width:100%';
+  const hdr = document.createElement('div');
+  hdr.className = 'card-head';
+  hdr.style.cssText = 'padding:0 0 4px;font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.2px';
+  hdr.textContent = '📐 ISA Metrics — computed independently for each architecture';
+  wrap.appendChild(hdr);
+  wrap.appendChild(buildMetricsTable(msg.asis_metrics, msg.tobe_metrics));
+  addAiRow(wrap, 'wide');
+}
+
+function appendAsIsComparison(msg) {
+  stopLoader();
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex;flex-direction:column;gap:16px;width:100%';
+
+  // ── Header + complexity + explanatory paragraph ──
+  const cx = msg.estimated_complexity;
+  const cxClass = cx === 'Low' ? 'cx-low' : cx === 'Medium' ? 'cx-med' : 'cx-high';
+  const hdr = document.createElement('div');
+  hdr.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <span style="font-size:12px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.2px">↔ As-Is vs. To-Be Gap Analysis</span>
+      <span class="badge ${cxClass}">${escHtml(cx)} complexity</span>
+    </div>
+    <div style="font-size:13px;color:var(--text);line-height:1.65;margin-bottom:4px">${escHtml(msg.overall_summary)}</div>
+    <div style="font-size:11px;color:var(--text3);line-height:1.55">${escHtml(msg.complexity_rationale)}</div>`;
+  wrap.appendChild(hdr);
 
   // ── Alignment cards ──
   if (msg.alignments && msg.alignments.length) {
