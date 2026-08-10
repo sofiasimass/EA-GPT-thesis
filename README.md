@@ -82,7 +82,7 @@ python -m uvicorn app:app --reload --port 8080
 Then open `http://localhost:8080`.
 
 `main.py` is an obsolete terminal-driven copy of the same pipeline, kept in the repo for
-reference — it is not the way this project is run.
+reference, it is not the way this project is run.
 
 ## Testing
 
@@ -134,7 +134,7 @@ Workflow for a big change:
 
 ```bash
 git commit -m "..."                      # commit the change as usual
-git tag -a v0.3.0 -m "short summary"      # tag the commit
+git tag -a v0.4.0 -m "short summary"      # tag the commit
 git push && git push --tags               # if/when pushing to GitHub
 ```
 
@@ -144,6 +144,83 @@ a thesis chapter at "the version evaluated in Section 4.2"); the Changelog is th
 human-readable summary of what changed and why.
 
 ## Changelog
+
+### v0.4.0 — 2026-08-10
+**Changed**
+- **`src/utils/bsp.py` restructured into an explicit pipeline.** The old
+  `_extract_blocks` did five different jobs in one ~155-line function
+  (process grouping, entity grouping, atomic union-find, cluster pairing,
+  leftover-entity assignment) with four nested closures capturing shared
+  state. It's now a sequence of small, named, single-responsibility
+  functions (`_weighted_jaccard`, `_average_linkage_group`,
+  `_group_processes`/`_group_entities`, `_UnionFind`, `_enforce_atomicity`,
+  `_pair_groups_to_clusters`, `_assign_unclaimed_entities`), orchestrated
+  by `_extract_blocks` itself. Still one file, no package split. Comments
+  for all new/rewritten logic are in simple European Portuguese, matching
+  a style already present in a few places in the file before this change.
+  **Behaviour is unchanged by default** — all 14 existing tests pass
+  without modification, and `run_bsp`'s existing call shape and
+  `BSPResult`'s existing fields are untouched; every addition below is
+  additive and defaulted off.
+
+**Added**
+- **An explicit, ordered decision table (`decide()`)** for every
+  merge/split call, replacing an implicit rule buried in code layout with
+  a named priority order: an architect-confirmed override wins over
+  everything, then the atomic force-merge rule (unchanged), then ordinary
+  similarity-vs-threshold grouping. Grad, B., "Decision Tables in Systems
+  Design," Session 19, Digest of Technical Papers, 1962 ACM National
+  Conference, pp. 76-77.
+- **`confirmed_overrides` parameter on `run_bsp`** (`{process_name:
+  {entity_name, ...}}`): lets an architect-confirmed constraint exempt a
+  specific entity from an atomic process's forced union, for that run
+  only — `process_types` itself is never mutated, so the exemption is
+  auditable as a deliberate override, not a silent reclassification.
+- **`BSPResult.pending_conflicts`**: for every entity an atomic process is
+  force-merging, checks whether a targeted, negative `ea_weights` value
+  for that process/entity-owner pair would have flipped the ordinary
+  grouping decision — using the *same* similarity-vs-threshold test as
+  everything else, not a separate invented cutoff. Never applied
+  automatically; only ever surfaced for confirmation. Caught and fixed a
+  real bug during implementation testing: the first version could report
+  a process "conflicting" with an entity it owns itself, and — since
+  entity-to-entity comparisons never use `ea_weights` (an existing rule,
+  unchanged) — was blind to whether any constraint actually targeted the
+  pair at all. Fixed before landing; both cases are now covered by manual
+  verification.
+- **`BSPResult.hub_flags`**: flags any process/entity touching more than
+  half of the opposite axis, before reordering — detection/reporting
+  only in this pass, does not yet change clustering behaviour. Bureš,
+  Cerny, Frajtak & Ahmed, "Testing the Consistency of Business Data
+  Objects Using Extended Static Testing of CRUD Matrices," Cluster
+  Computing 22(S4), S963-S976, 2019.
+- **`derive_threshold()` and `run_bsp(adaptive_threshold=..., adaptive_k=...,
+  adaptive_min_pairs=...)`**: an opt-in alternative to the fixed
+  `density_threshold=0.5`, computing mean + k·stdev over the matrix's own
+  pairwise-similarity distribution instead of a constant chosen without
+  knowing what the data would look like. Off by default — `k=1.0` is an
+  explicitly unvalidated starting point, not yet tested against real
+  matrices. Akkasi, Seyyedi & Shams, "Presenting A Method for Benchmarking
+  Application in the Enterprise Architecture Planning Process Based on
+  Federal Enterprise Architecture Framework," IEEE Xplore.
+- **`classify_changes()`**: diffs two iterations' clusters and labels each
+  changed process/entity `"atomicity_override"` or `"ordinary"`. Exported
+  but not called from `run_bsp` — not wired into `app.py`/the frontend
+  yet, ready for a later pass.
+
+**Not yet done (tracked as next steps, not silently deferred)**
+- None of the new capabilities above are reachable from the web app —
+  `app.py` and `src/static/index.html` are unchanged. `confirmed_overrides`,
+  `pending_conflicts`, and `classify_changes` need UI/orchestration wiring
+  before an architect can actually use them.
+- `adaptive_threshold` needs empirical testing against real matrices to
+  pick a sensible `k` (and decide whether it should become the default)
+  before it's trustworthy.
+- The extraction prompt's "every process must have 4-6 CRUD entries" rule
+  (`src/resources/prompt.txt`, `src/utils/matrix.py`'s `MatrixResult`
+  docstring) is under review — it may be forcing fabricated/truncated
+  CRUD entries to hit an artificial density band, which the adaptive
+  threshold may make unnecessary. Not changed in this version.
 
 ### v0.3.0 — 2026-08-08
 **Added**

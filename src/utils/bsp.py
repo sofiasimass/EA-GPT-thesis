@@ -1,30 +1,62 @@
 """
-bsp.py — IBM Business System Planning (BSP) clustering
+bsp.py — IBM Business System Planning (BSP)-inspired clustering
 -------------------------------------------------------
-Pure algorithmic implementation of the 4-step BSP method.
-No LLM involved. Takes a CRUD matrix and returns clusters.
+Pure algorithmic implementation. No LLM involved. Takes a CRUD matrix and
+returns clusters.
 
 Techniques used:
   - Weighted Jaccard similarity (process and entity grouping)
-  - Greedy nearest-neighbour reordering (Step 3)
-  - Union-Find for atomic co-location constraint (Step 4)
+  - Greedy nearest-neighbour reordering (affinity-based)
+  - Union-Find for atomic co-location constraint
 
-BSP Steps:
-  Step 1 — Entity ownership: the process that CREATES an entity "owns" it.
-            Ties broken by C > U > D > R priority.
-  Step 2 — Initial clusters: scaffold based on owned-entity groups.
-            Result is discarded; used only for conceptual correctness.
-  Step 3 — Affinity reordering: reorder rows/cols so processes and entities
-            with the most shared operations end up adjacent, maximising
-            block-diagonal density in the matrix.
-  Step 4 — Block extraction: group adjacent processes by weighted Jaccard
-            similarity, group entities likewise, then enforce constraints:
-              • Atomic processes: all entities they WRITE (C/U/D) must land
-                in the same cluster (ACID — writes cannot span two systems).
-                Entities they only READ may live in other clusters.
-              • E2E processes: their entities may be split across clusters;
-                the process itself is recorded as spanning those clusters,
-                representing cross-system integration dependencies.
+Correspondence to the classical 4-step BSP method (delete irrelevant
+rows/cols; group processes that create the same entities; merge in
+processes that update those entities; identify clusters as simple as
+possible) — this is an adaptation, not a literal step-for-step port:
+  - Classical step 1 (delete irrelevant/similar rows or columns) has no
+    preprocessing equivalent here — the full matrix is always reordered
+    and clustered. The nearest relative is _absorb_pure_readers, which
+    runs *after* clustering and relocates stray processes into an
+    existing cluster rather than deleting anything up front.
+  - Classical steps 2 and 3 (group processes that create the same
+    entities, then fold in processes that update them) are not two
+    sequential passes here. They're collapsed into one weighted-affinity
+    calculation (_affinity / _weighted_jaccard), where C/U/D/R
+    operations are compared via min(op_weight) — a create/update pair on
+    the same entity scores nearly as high as a create/create pair, so
+    creators and updaters gravitate together in a single pass.
+  - Classical step 4 (identify application clusters, kept as simple as
+    possible) maps to _extract_blocks (grouping adjacent processes/
+    entities above density_threshold) followed by _absorb_pure_readers
+    (folding stray read-only processes into an existing cluster instead
+    of leaving the result fragmented).
+
+Pipeline (see run_bsp):
+  1. _compute_entity_owners — resolve which process "owns" each entity
+     (the creator; ties broken by C > U > D > R priority). Used for
+     reporting (BSPResult.entity_owners); does not drive the clustering.
+  2. _reorder_matrix — greedy nearest-neighbour reordering of rows/columns
+     by affinity, maximising block-diagonal density.
+  3. _extract_blocks — group adjacent processes by weighted Jaccard
+     similarity, group entities likewise, then enforce constraints:
+       • Atomic processes: all entities they WRITE (C/U/D) must land in
+         the same cluster (ACID — writes cannot span two systems).
+         Entities they only READ may live in other clusters.
+       • E2E processes: their entities may be split across clusters; the
+         process itself is recorded as spanning those clusters,
+         representing cross-system integration dependencies.
+  4. _absorb_pure_readers — relocate any non-E2E process with zero C/U/D
+     operations into whichever cluster owns most of what it reads.
+
+Since the restructure below, the pipeline also has optional, opt-in
+extras — none change default behaviour: hub detection (BSPResult.hub_flags,
+reporting only), an adaptive similarity threshold (run_bsp(adaptive_threshold=True),
+replacing the fixed density_threshold with one derived from this matrix's
+own similarity distribution), and an explicit decision table (decide())
+that lets an architect's confirmed constraint exempt a specific entity from
+an atomic process's forced union — surfaced as BSPResult.pending_conflicts
+before anything is applied. classify_changes() is exported for comparing
+two iterations' clusters, but isn't called from run_bsp itself.
 
 process_type values (set by the LLM during extraction):
   "atomic"     — single indivisible transaction; cluster boundaries drawn tightly.
@@ -35,7 +67,8 @@ process_type values (set by the LLM during extraction):
 from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Dict, List, Set
+from typing import Callable, Dict, List, Literal, Set
+import statistics
 import pandas as pd
 from pydantic import BaseModel, Field
 
@@ -50,8 +83,6 @@ class EAWeight(BaseModel):
 class EAWeightResult(BaseModel):
     biases: List[EAWeight]
 
-
-from typing import Literal
 
 class MarketOption(BaseModel):
     name: str = Field(description="Name of the commercial software solution (e.g. Salesforce, SAP S/4HANA, Workday)")
@@ -148,6 +179,8 @@ class AsIsToBeResult(BaseModel):
     )
 
 
+# ---- estruturas de dados do clustering ----
+
 @dataclass
 class Cluster:
     id: int
@@ -179,6 +212,79 @@ class BSPResult:
     reordered_matrix: pd.DataFrame   # rows=processes, cols=entities
     entity_owners: Dict[str, str]    # entity → owning process
     e2e_span: Dict[str, List[int]] = field(default_factory=dict)  # e2e process → cluster ids it spans
+    hub_flags: List[HubFlag] = field(default_factory=list)                 # processos/entidades que dominam a matriz (só alerta)
+    pending_conflicts: List[PendingConflict] = field(default_factory=list)  # conflitos atomicidade vs. pesos, por confirmar
+
+
+@dataclass
+class HubFlag:
+    """
+    Um processo ou entidade que toca em mais de metade do outro eixo da
+    matriz é um "hub" — pode dominar as comparações de similaridade e
+    distorcer o agrupamento à volta dele. Por agora isto só serve para
+    registo/alerta, não muda o resultado do clustering.
+
+    Bureš, Cerny, Frajtak & Ahmed, "Testing the Consistency of Business
+    Data Objects Using Extended Static Testing of CRUD Matrices," Cluster
+    Computing 22(S4), S963-S976, 2019.
+    """
+    subject: str        # nome do processo ou da entidade
+    axis: str            # "process" ou "entity"
+    coverage: float       # fração do outro eixo que este item toca, entre 0 e 1
+    threshold: float
+
+
+@dataclass
+class Decision:
+    """
+    Uma decisão de juntar ou separar uma entidade, com a razão. Cada vez
+    que o pipeline decide onde uma entidade fica, isto fica guardado aqui
+    — serve para explicar ao arquiteto porque é que algo aconteceu, não só
+    mostrar o resultado final.
+    """
+    subject: str        # processo
+    entity: str          # entidade envolvida nesta decisão
+    action: str           # "exempt_confirmed" | "force_merge" | "ordinary_merge" | "ordinary_split"
+    reasoning: str
+    score: float
+    threshold: float
+
+
+@dataclass
+class DecisionContext:
+    """Tudo o que a função decide() precisa para decidir uma entidade."""
+    threshold: float
+    process_types: Dict[str, str]
+    confirmed_overrides: Dict[str, Set[str]]
+    similarity_fn: Callable[[str, str], float]
+    anchor: str                          # entidade de referência do processo (a primeira que ele escreve)
+    ignore_atomicity: bool = False       # True só quando estamos a testar "e se este processo não fosse atómico?"
+
+
+@dataclass
+class PendingConflict:
+    """
+    Quando um processo atómico é obrigado a juntar-se a uma entidade, mas o
+    peso dado pelo arquiteto diz que deviam estar separados — isto fica
+    registado aqui. Nunca é aplicado sozinho, só é mostrado para
+    confirmação (ver confirmed_overrides em run_bsp).
+    """
+    process: str
+    conflicting_process: str
+    entity: str
+    adjusted_score: float
+    threshold: float
+    reasoning: str
+
+
+@dataclass
+class ClusterChange:
+    """Diferença entre o clustering de uma iteração e o da iteração anterior."""
+    subject: str
+    from_cluster: int | None
+    to_cluster: int | None
+    change_type: str     # "atomicity_override" ou "ordinary"
+    reasoning: str
 
 
 # Numeric weights for CRUD operations.
@@ -192,6 +298,61 @@ def _op_weight(op) -> int:
     if op is None or (isinstance(op, float) and pd.isna(op)):
         return 0
     return max((_OP_PRIORITY.get(ch, 0) for ch in str(op).upper()), default=0)
+
+
+def _compute_entity_owners(df: pd.DataFrame) -> Dict[str, str]:
+    """
+    For each entity (column), the process (row) with the highest-priority
+    CRUD operation owns it.  C > U > R > D.  Ties broken by first occurrence.
+    """
+    owners: Dict[str, str] = {}
+    for entity in df.columns:
+        best_proc, best_w = None, -1
+        for proc in df.index:
+            w = _op_weight(df.at[proc, entity])
+            if w > best_w:
+                best_w, best_proc = w, proc
+        if best_proc:
+            owners[entity] = best_proc
+    return owners
+
+
+# ---- deteção de hubs ----
+
+def _detect_hubs(df: pd.DataFrame, threshold: float = 0.5) -> List[HubFlag]:
+    """
+    Um processo ou entidade que toca em mais de `threshold` do outro eixo é
+    um "hub" — pode puxar coisas que não têm nada a ver umas com as outras
+    para o mesmo cluster, só por estar em todo o lado. Por agora só regista
+    o alerta em BSPResult.hub_flags, não muda o agrupamento (isso fica
+    para depois de testar, como o adaptive_threshold).
+
+    Corre antes do _reorder_matrix, sobre a matriz original — reordenar
+    não muda quantas colunas/linhas um item toca, mas a citação que
+    justifica isto fala em fazer a deteção antes de reordenar.
+
+    Bureš, Cerny, Frajtak & Ahmed, "Testing the Consistency of Business
+    Data Objects Using Extended Static Testing of CRUD Matrices," Cluster
+    Computing 22(S4), S963-S976, 2019.
+    """
+    flags: List[HubFlag] = []
+    n_entities = len(df.columns)
+    n_procs = len(df.index)
+
+    for proc in df.index:
+        touched = sum(1 for e in df.columns if _op_weight(df.at[proc, e]) > 0)
+        coverage = touched / n_entities if n_entities else 0
+        if coverage > threshold:
+            flags.append(HubFlag(subject=proc, axis="process", coverage=coverage, threshold=threshold))
+
+    for ent in df.columns:
+        touched = sum(1 for p in df.index if _op_weight(df.at[p, ent]) > 0)
+        coverage = touched / n_procs if n_procs else 0
+        if coverage > threshold:
+            flags.append(HubFlag(subject=ent, axis="entity", coverage=coverage, threshold=threshold))
+
+    return flags
+
 
 def _affinity(df: pd.DataFrame, a: str, b: str, axis: str, ea_weights: Dict[tuple, float] = None) -> float:
     """
@@ -232,7 +393,7 @@ def _affinity(df: pd.DataFrame, a: str, b: str, axis: str, ea_weights: Dict[tupl
 
     shared_normalised = shared / max_possible if max_possible else 0
 
-    # Bias arquitectural: somado directamente — weights em [-0.5, 0.5] têm
+    # Bias arquitetural: somado diretamente — weights em [-0.5, 0.5] têm
     # impacto proporcional sobre uma afinidade entre [0, 1].
     pair = tuple(sorted([a, b]))
     weight = ea_weights.get(pair, 0)
@@ -269,24 +430,6 @@ def _cluster_name(entities: List[str]) -> str:
     return entities[0] if len(entities) == 1 else " / ".join(entities[:2])
 
 
-def _compute_entity_owners(df: pd.DataFrame) -> Dict[str, str]:
-    """
-    For each entity (column), the process (row) with the highest-priority
-    CRUD operation owns it.  C > U > R > D.  Ties broken by first occurrence.
-    """
-    owners: Dict[str, str] = {}
-    for entity in df.columns:
-        best_proc, best_w = None, -1
-        for proc in df.index:
-            w = _op_weight(df.at[proc, entity])
-            if w > best_w:
-                best_w, best_proc = w, proc
-        if best_proc:
-            owners[entity] = best_proc
-    return owners
-
-
-
 def _reorder_matrix(df: pd.DataFrame, ea_weights: Dict[tuple, float] = None) -> pd.DataFrame:
     """
     Reorder rows (processes) and columns (entities) so that items with high
@@ -295,126 +438,382 @@ def _reorder_matrix(df: pd.DataFrame, ea_weights: Dict[tuple, float] = None) -> 
     biases influence the final layout directly.
     """
     new_procs = _greedy_reorder(
-        list(df.index), 
+        list(df.index),
         lambda a, b: _affinity(df, a, b, "row", ea_weights)
     )
     new_ents  = _greedy_reorder(
-        list(df.columns), 
+        list(df.columns),
         lambda a, b: _affinity(df, a, b, "col", ea_weights)
     )
     return df.loc[new_procs, new_ents]
 
-def _extract_blocks(df: pd.DataFrame, density_threshold: float = 0.5, ea_weights: Dict[tuple, float] = None, process_types: Dict[str, str] = None) -> List[Cluster]:
 
-    ea_weights   = ea_weights or {}
-    process_types = process_types or {}
-    procs    = list(df.index)
-    entities = list(df.columns)
+# ---- pipeline de clustering ----
+# A antiga _extract_blocks fazia tudo numa função só (agrupar processos,
+# agrupar entidades, aplicar a regra da atomicidade, e juntar tudo em
+# clusters). Agora cada passo é uma função com um nome e uma
+# responsabilidade — mais fácil de perceber, de testar, e de estender
+# (foi aqui que entrou o threshold adaptativo e a tabela de decisão).
 
-    def _weighted_jaccard_procs(p1: str, p2: str) -> float:
-        """Jaccard ponderado entre dois processos, iterando pelas entidades."""
-        intersection = sum(
-            min(_op_weight(df.at[p1, e]), _op_weight(df.at[p2, e]))
-            for e in entities
-        )
-        union_sum = sum(
-            max(_op_weight(df.at[p1, e]), _op_weight(df.at[p2, e]))
-            for e in entities
-        )
-        return intersection / union_sum if union_sum else 0
+def _weighted_jaccard(df: pd.DataFrame, a: str, b: str, axis: str) -> float:
+    """
+    Jaccard ponderado entre dois processos (axis="row") ou duas entidades
+    (axis="col"). Substitui as duas funções que existiam antes
+    (_weighted_jaccard_procs e _weighted_jaccard_ents) por uma só, com o
+    mesmo "axis" que a função _affinity já usa.
 
-    def _weighted_jaccard_ents(e1: str, e2: str) -> float:
-        """Jaccard ponderado entre duas entidades, iterando pelos processos."""
-        intersection = sum(
-            min(_op_weight(df.at[p, e1]), _op_weight(df.at[p, e2]))
-            for p in procs
-        )
-        union_sum = sum(
-            max(_op_weight(df.at[p, e1]), _op_weight(df.at[p, e2]))
-            for p in procs
-        )
-        return intersection / union_sum if union_sum else 0
+    Não é a mesma coisa que _affinity: aqui a normalização é pela soma real
+    da interseção/união deste par (dá "quanta sobreposição têm estes dois,
+    dos dois"), enquanto _affinity normaliza por uma constante fixa
+    (4 × número de itens) porque serve para ordenar a matriz toda, não
+    para comparar com um threshold. Por isso não foram fundidas numa só.
+    """
+    if axis == "row":
+        others = df.columns
+        intersection = sum(min(_op_weight(df.at[a, o]), _op_weight(df.at[b, o])) for o in others)
+        union_sum    = sum(max(_op_weight(df.at[a, o]), _op_weight(df.at[b, o])) for o in others)
+    else:
+        others = df.index
+        intersection = sum(min(_op_weight(df.at[o, a]), _op_weight(df.at[o, b])) for o in others)
+        union_sum    = sum(max(_op_weight(df.at[o, a]), _op_weight(df.at[o, b])) for o in others)
 
-    # --- Step 4a: Group processes ---
-    # Compare each process to the *average* similarity of the whole current group,
-    # not just the last element. This avoids chaining artefacts where two dissimilar
-    # processes end up in the same group because they each happen to be similar to
-    # the process immediately before them.
-    proc_groups: List[List[str]] = [[procs[0]]]
-    for i in range(1, len(procs)):
-        curr = procs[i]
-        current_group = proc_groups[-1]
+    return intersection / union_sum if union_sum else 0
 
-        group_similarities = []
+
+def _average_linkage_group(
+    items: List[str],
+    similarity_fn: Callable[[str, str], float],
+    threshold: float,
+    bias_fn: Callable[[str, str], float] = None,
+) -> List[List[str]]:
+    """
+    Junta itens em grupos, sempre a comparar com a média do grupo todo até
+    agora — não só com o último item que entrou. Isto evita o problema da
+    "corrente": se A e B são parecidos, e B e C são parecidos, A e C podem
+    não ter nada a ver um com o outro. Comparar só com o último deixava
+    isso passar; comparar com a média do grupo inteiro não deixa.
+
+    bias_fn é opcional — só é usado para agrupar processos (os pesos do
+    arquiteto), nunca para entidades.
+    """
+    if not items:
+        return []
+
+    groups: List[List[str]] = [[items[0]]]
+    for curr in items[1:]:
+        current_group = groups[-1]
+        similarities = []
         for member in current_group:
-            jaccard = _weighted_jaccard_procs(curr, member)
-            pair = tuple(sorted([member, curr]))
-            weight = ea_weights.get(pair, 0)  # architect bias shifts the threshold
-            group_similarities.append(jaccard + weight)
+            score = similarity_fn(curr, member)
+            if bias_fn:
+                score += bias_fn(curr, member)
+            similarities.append(score)
 
-        avg_similarity = sum(group_similarities) / len(group_similarities)
+        avg_similarity = sum(similarities) / len(similarities)
 
-        print(f"Average similarity of {curr} to group {current_group} is {avg_similarity:.2f}")
-
-        if avg_similarity >= density_threshold:
-            print("JOINED TO CURRENT GROUP")
-            proc_groups[-1].append(curr)
+        if avg_similarity >= threshold:
+            groups[-1].append(curr)
         else:
-            print("STARTED NEW GROUP")
-            proc_groups.append([curr])
+            groups.append([curr])
 
-    # --- Step 4b: Group entities ---
-    # ea_weights are process-pair biases and do not apply here.
-    # Entity grouping uses only the structural Jaccard signal.
-    ent_groups: List[List[str]] = [[entities[0]]]
-    for j in range(1, len(entities)):
-        prev = ent_groups[-1][-1]
-        curr = entities[j]
-        jaccard = _weighted_jaccard_ents(prev, curr)
-        if jaccard >= density_threshold:
-            ent_groups[-1].append(curr)
-        else:
-            ent_groups.append([curr])
+    return groups
 
-    # --- Co-location constraint: atomic processes force their entities into the same group ---
-    # Uses union-find so cascading merges (A+B then B+C) are handled correctly.
-    if process_types:
-        parent = {e: e for e in entities}
 
-        def _find(e: str) -> str:
-            while parent[e] != e:
-                parent[e] = parent[parent[e]]
-                e = parent[e]
-            return e
+def _group_processes(df: pd.DataFrame, threshold: float, ea_weights: Dict[tuple, float] = None) -> List[List[str]]:
+    """Agrupa processos, com os pesos do arquiteto a poder influenciar o resultado."""
+    ea_weights = ea_weights or {}
 
-        def _union(e1: str, e2: str) -> None:
-            r1, r2 = _find(e1), _find(e2)
-            if r1 != r2:
-                parent[r2] = r1
+    def bias(a: str, b: str) -> float:
+        return ea_weights.get(tuple(sorted([a, b])), 0)
 
-        # Preserve existing Jaccard groupings
-        for eg in ent_groups:
-            for i in range(1, len(eg)):
-                _union(eg[0], eg[i])
+    return _average_linkage_group(
+        list(df.index),
+        lambda a, b: _weighted_jaccard(df, a, b, "row"),
+        threshold,
+        bias_fn=bias,
+    )
 
-        # Force co-location for atomic processes — writes only (C/U/D).
-        # Reads don't need ACID guarantees and may cross cluster boundaries.
-        for proc in procs:
-            if process_types.get(proc, "atomic") == "atomic":
-                touched = [e for e in entities if _op_weight(df.at[proc, e]) > _OP_PRIORITY["R"]]
-                for i in range(1, len(touched)):
-                    _union(touched[0], touched[i])
 
-        # Rebuild ent_groups from union-find results
-        groups_dict: Dict[str, List[str]] = defaultdict(list)
-        for e in entities:
-            groups_dict[_find(e)].append(e)
+def _group_entities(df: pd.DataFrame, threshold: float) -> List[List[str]]:
+    """
+    Agrupa entidades. Os pesos do arquiteto (ea_weights) são sobre pares de
+    processos, não fazem sentido aqui — o agrupamento de entidades usa só
+    o sinal estrutural do Jaccard.
+    """
+    return _average_linkage_group(
+        list(df.columns),
+        lambda a, b: _weighted_jaccard(df, a, b, "col"),
+        threshold,
+    )
 
-        entity_order = {e: i for i, e in enumerate(entities)}
-        ent_groups = [sorted(g, key=lambda e: entity_order[e]) for g in groups_dict.values()]
-        ent_groups.sort(key=lambda g: entity_order[g[0]])
 
-    # --- Pair process groups ↔ entity groups: score = soma dos op_weights (já não binário) ---
+def _pairwise_scores(items: List[str], similarity_fn: Callable[[str, str], float]) -> List[float]:
+    """Todos os valores de similaridade par a par desta lista, para calcular estatísticas em cima deles."""
+    scores = []
+    for i, a in enumerate(items):
+        for b in items[i + 1:]:
+            scores.append(similarity_fn(a, b))
+    return scores
+
+
+def derive_threshold(
+    scores: List[float],
+    k: float = 1.0,
+    min_pairs: int = 5,
+    fallback: float = 0.5,
+) -> float:
+    """
+    Threshold adaptativo: média + k × desvio-padrão da distribuição de
+    similaridades desta matriz, em vez de um número fixo escolhido à
+    partida sem saber como os dados iam ser. Um threshold fixo (como 0.5)
+    pode não fazer sentido para uma matriz muito "solta" (quase tudo fica
+    sozinho, ninguém chega a 0.5) ou muito densa (quase tudo se junta) —
+    este adapta-se aos dados reais de cada matriz.
+
+    Se não houver pares suficientes (`min_pairs`) para uma estatística com
+    significado, usa `fallback` (o antigo valor fixo) em vez de arriscar.
+
+    Akkasi, Seyyedi & Shams, "Presenting A Method for Benchmarking
+    Application in the Enterprise Architecture Planning Process Based on
+    Federal Enterprise Architecture Framework," IEEE Xplore.
+
+    NOTA: o k=2 do artigo original é para outro tipo de problema (aceitar
+    ou não um pequeno conjunto de candidatos face a um único parceiro
+    ideal). Aqui o threshold é usado em muitas comparações seguidas
+    enquanto se percorre a matriz toda, por isso k=1.0 é só um ponto de
+    partida — precisa de ser testado e ajustado com matrizes reais antes
+    de confiar nele.
+    """
+    if len(scores) < min_pairs:
+        return fallback
+    mean = statistics.fmean(scores)
+    stdev = statistics.pstdev(scores)
+    return mean + k * stdev
+
+
+class _UnionFind:
+    """
+    Union-find simples: cada entidade começa sozinha num grupo, e vamos
+    juntando (union) as que têm de ficar juntas. No fim, groups() devolve
+    os grupos finais, pela ordem em que as entidades apareciam.
+    """
+    def __init__(self, items: List[str], seed_groups: List[List[str]] = None):
+        self.parent = {item: item for item in items}
+        if seed_groups:
+            for group in seed_groups:
+                for i in range(1, len(group)):
+                    self.union(group[0], group[i])
+
+    def find(self, item: str) -> str:
+        while self.parent[item] != item:
+            self.parent[item] = self.parent[self.parent[item]]
+            item = self.parent[item]
+        return item
+
+    def union(self, a: str, b: str) -> None:
+        root_a, root_b = self.find(a), self.find(b)
+        if root_a != root_b:
+            self.parent[root_b] = root_a
+
+    def groups(self, order: List[str]) -> List[List[str]]:
+        buckets: Dict[str, List[str]] = defaultdict(list)
+        for item in order:
+            buckets[self.find(item)].append(item)
+
+        order_index = {item: i for i, item in enumerate(order)}
+        result = list(buckets.values())
+        result.sort(key=lambda g: order_index[g[0]])
+        return result
+
+
+def decide(process: str, entity: str, ctx: DecisionContext) -> Decision:
+    """
+    A tabela de decisão: para cada par processo/entidade, decide o que
+    fazer — e regista qual foi a razão. As regras têm uma ordem de
+    prioridade explícita, em vez de estarem escondidas na ordem do código
+    como antes:
+
+      1. Se o arquiteto já confirmou que esta entidade pode sair do
+         cluster forçado pelo processo atómico — ganha sempre, seja qual
+         for o resto.
+      2. Se o processo é atómico e escreve nesta entidade — junta à força
+         (é a regra ACID: uma transação não pode ficar espalhada por dois
+         sistemas).
+      3. Senão, é só a comparação normal: a similaridade chega ao
+         threshold ou não chega.
+
+    Grad, B., "Decision Tables in Systems Design," Session 19, Digest of
+    Technical Papers, 1962 ACM National Conference, pp. 76-77.
+
+    Nota: process_types.get(process, "atomic") == "atomic" é a mesma
+    condição literal que já existia antes — "ambiguous" NÃO cai aqui,
+    mesmo o docstring do módulo dizendo que é tratado como atómico. É uma
+    inconsistência que já existia no código original; fica por resolver
+    noutra altura, não é para corrigir silenciosamente nesta reestruturação.
+    """
+    if entity in ctx.confirmed_overrides.get(process, set()):
+        return Decision(
+            subject=process, entity=entity, action="exempt_confirmed",
+            reasoning=f"o arquiteto confirmou que {entity} pode sair do cluster de {process}",
+            score=0.0, threshold=ctx.threshold,
+        )
+
+    if not ctx.ignore_atomicity and ctx.process_types.get(process, "atomic") == "atomic":
+        return Decision(
+            subject=process, entity=entity, action="force_merge",
+            reasoning=f"{process} é atómico e escreve em {entity} — têm de ficar no mesmo sistema",
+            score=0.0, threshold=ctx.threshold,
+        )
+
+    score = ctx.similarity_fn(ctx.anchor, entity)
+    if score >= ctx.threshold:
+        action = "ordinary_merge"
+        reasoning = f"similaridade {score:.2f} >= threshold {ctx.threshold:.2f}"
+    else:
+        action = "ordinary_split"
+        reasoning = f"similaridade {score:.2f} < threshold {ctx.threshold:.2f}"
+
+    return Decision(subject=process, entity=entity, action=action, reasoning=reasoning,
+                     score=score, threshold=ctx.threshold)
+
+
+def _enforce_atomicity(
+    df: pd.DataFrame,
+    entities: List[str],
+    ent_groups: List[List[str]],
+    process_types: Dict[str, str],
+    confirmed_overrides: Dict[str, Set[str]],
+    threshold: float,
+) -> tuple[List[List[str]], List[Decision]]:
+    """
+    Aplica a regra de co-localização: um processo atómico obriga todas as
+    entidades que ele escreve (C/U/D) a ficarem no mesmo grupo. Usa
+    union-find porque as junções em cascata (A+B, depois B+C) têm de ser
+    tratadas corretamente.
+
+    Quando confirmed_overrides está vazio — que é o valor por omissão, e é
+    o que app.py e todos os testes atuais usam — decide() nunca devolve
+    "exempt_confirmed". Ou seja, isto faz exatamente o que o código antigo
+    fazia, processo a processo, entidade a entidade, sem exceção.
+    """
+    confirmed_overrides = confirmed_overrides or {}
+    uf = _UnionFind(entities, seed_groups=ent_groups)
+    decisions: List[Decision] = []
+
+    for proc in df.index:
+        if process_types.get(proc, "atomic") != "atomic":
+            continue
+
+        touched = [e for e in entities if _op_weight(df.at[proc, e]) > _OP_PRIORITY["R"]]
+        if not touched:
+            continue
+        anchor = touched[0]
+
+        ctx = DecisionContext(
+            threshold=threshold, process_types=process_types,
+            confirmed_overrides=confirmed_overrides,
+            similarity_fn=lambda a, b: _weighted_jaccard(df, a, b, "col"),
+            anchor=anchor,
+        )
+
+        for entity in touched[1:]:
+            decision = decide(proc, entity, ctx)
+            decisions.append(decision)
+            if decision.action == "force_merge":
+                uf.union(anchor, entity)
+            # "exempt_confirmed" não junta nada — a entidade fica livre
+            # para o agrupamento normal decidir para onde vai.
+
+    new_groups = uf.groups(entities)
+    return new_groups, decisions
+
+
+def _detect_pending_conflicts(
+    df: pd.DataFrame,
+    decisions: List[Decision],
+    entity_owners: Dict[str, str],
+    ea_weights: Dict[tuple, float],
+    ea_reasoning: Dict[tuple, str],
+    threshold: float,
+) -> List[PendingConflict]:
+    """
+    Para cada decisão "force_merge", pergunta: "e se este processo não
+    fosse atómico, o que é que o agrupamento normal teria decidido?" Se a
+    resposta fosse "separar", há um conflito real entre a regra da
+    atomicidade e o que o peso do arquiteto está a pedir — fica registado
+    aqui, mas nunca é aplicado sozinho, só depois de confirmado (ver
+    confirmed_overrides em run_bsp).
+
+    Se não há ea_weights, não pode haver conflito nenhum — por isso
+    devolve logo lista vazia, sem correr o resto da função. É uma garantia
+    explícita, não um acaso da matemática.
+
+    Duas coisas a que é preciso ter cuidado aqui:
+      - Uma entidade que o próprio processo criou não conta — não faz
+        sentido "entrar em conflito" com uma entidade que é dele mesmo.
+        Só interessa quando a entidade pertence a OUTRO processo.
+      - A comparação de entidades (_weighted_jaccard) nunca usa ea_weights
+        — essa regra já existia antes e não foi mudada. Por isso, para
+        esta verificação em concreto, soma-se o peso do par
+        (processo, dono-da-entidade) diretamente à similaridade, só
+        durante este teste — sem isso, o resultado seria sempre o mesmo
+        com ou sem pesos, e nunca refletiria o que o arquiteto pediu.
+    """
+    if not ea_weights:
+        return []
+
+    ea_reasoning = ea_reasoning or {}
+    conflicts: List[PendingConflict] = []
+
+    for decision in decisions:
+        if decision.action != "force_merge":
+            continue
+
+        process = decision.subject
+        entity = decision.entity
+        owner = entity_owners.get(entity, "")
+        if not owner or owner == process:
+            continue
+
+        pair = tuple(sorted([process, owner]))
+        weight = ea_weights.get(pair, 0)
+        if weight >= 0:
+            continue  # sem peso negativo para este par, não há sinal de conflito
+
+        touched = [e for e in df.columns if _op_weight(df.at[process, e]) > _OP_PRIORITY["R"]]
+        if not touched:
+            continue
+        anchor = touched[0]
+
+        def _biased_similarity(a: str, b: str, _w=weight) -> float:
+            return _weighted_jaccard(df, a, b, "col") + _w
+
+        probe_ctx = DecisionContext(
+            threshold=threshold, process_types={process: "atomic"},
+            confirmed_overrides={},
+            similarity_fn=_biased_similarity,
+            anchor=anchor, ignore_atomicity=True,
+        )
+        counterfactual = decide(process, entity, probe_ctx)
+
+        if counterfactual.action == "ordinary_split":
+            owner = entity_owners.get(entity, "")
+            reasoning = ea_reasoning.get(tuple(sorted([process, owner])), "") or counterfactual.reasoning
+            conflicts.append(PendingConflict(
+                process=process, conflicting_process=owner, entity=entity,
+                adjusted_score=counterfactual.score, threshold=threshold,
+                reasoning=reasoning,
+            ))
+
+    return conflicts
+
+
+def _pair_groups_to_clusters(df: pd.DataFrame, proc_groups: List[List[str]], ent_groups: List[List[str]]) -> List[Cluster]:
+    """
+    Junta cada grupo de processos ao grupo de entidades com que mais
+    interage (score = soma dos pesos CRUD). Se dois grupos de processos
+    calharem no mesmo grupo de entidades, ficam no mesmo cluster.
+    """
     clusters: List[Cluster] = []
     for cid, pg in enumerate(proc_groups, start=1):
         best_eg, best_score = ent_groups[0], -1
@@ -433,8 +832,11 @@ def _extract_blocks(df: pd.DataFrame, density_threshold: float = 0.5, ea_weights
                 processes=list(pg),
                 entities=list(best_eg),
             ))
+    return clusters
 
-    # --- Assign any unclaimed entity groups ---
+
+def _assign_unclaimed_entities(clusters: List[Cluster], ent_groups: List[List[str]], df: pd.DataFrame) -> List[Cluster]:
+    """Grupos de entidades que ainda não ficaram em nenhum cluster vão para o cluster com que mais se relacionam."""
     claimed = {e for c in clusters for e in c.entities}
     for eg in ent_groups:
         if any(e not in claimed for e in eg):
@@ -448,8 +850,39 @@ def _extract_blocks(df: pd.DataFrame, density_threshold: float = 0.5, ea_weights
                 best_c.entities.extend(new_entities)
                 best_c.name = _cluster_name(best_c.entities)
                 claimed.update(new_entities)
-
     return clusters
+
+
+def _extract_blocks(
+    df: pd.DataFrame,
+    density_threshold: float = 0.5,
+    ea_weights: Dict[tuple, float] = None,
+    process_types: Dict[str, str] = None,
+    confirmed_overrides: Dict[str, Set[str]] = None,
+) -> tuple[List[Cluster], List[Decision]]:
+    """
+    Orquestra o passo 4: agrupa processos, agrupa entidades, obriga os
+    processos atómicos a ficarem juntos com o que escrevem, junta tudo em
+    clusters, e por fim distribui os grupos de entidades que sobraram.
+    """
+    ea_weights = ea_weights or {}
+    process_types = process_types or {}
+    entities = list(df.columns)
+
+    proc_groups = _group_processes(df, density_threshold, ea_weights)
+    ent_groups = _group_entities(df, density_threshold)
+
+    decisions: List[Decision] = []
+    if process_types:
+        ent_groups, decisions = _enforce_atomicity(
+            df, entities, ent_groups, process_types, confirmed_overrides, density_threshold,
+        )
+
+    clusters = _pair_groups_to_clusters(df, proc_groups, ent_groups)
+    clusters = _assign_unclaimed_entities(clusters, ent_groups, df)
+
+    return clusters, decisions
+
 
 def _absorb_pure_readers(clusters: List[Cluster], df: pd.DataFrame, process_types: Dict[str, str] = None) -> List[Cluster]:
     """
@@ -653,7 +1086,67 @@ def matrix_to_clusters(
     return clusters
 
 
-def run_bsp(matrix_data: Dict[str, Dict[str, str]], density_threshold: float = 0.5, ea_weights: Dict[tuple, float] = None, process_types: Dict[str, str] = None) -> BSPResult:
+def classify_changes(
+    prev_clusters: List[Cluster],
+    new_clusters: List[Cluster],
+    decisions: List[Decision] = None,
+) -> List[ClusterChange]:
+    """
+    Compara o clustering novo com o anterior e diz o que mudou — e porquê.
+    Se a mudança envolveu quebrar (ou confirmar) a atomicidade, fica
+    marcada como "atomicity_override"; senão é só uma mudança normal.
+
+    Não é chamada de dentro do run_bsp — é para o app.py usar mais tarde,
+    quando quiser mostrar ao arquiteto o que mudou entre duas iterações.
+    """
+    decisions = decisions or []
+    decision_by_entity = {d.entity: d for d in decisions}
+
+    def _membership(clusters: List[Cluster]) -> Dict[str, int]:
+        membership: Dict[str, int] = {}
+        for c in clusters:
+            for subject in c.processes + c.entities:
+                membership[subject] = c.id
+        return membership
+
+    prev_membership = _membership(prev_clusters)
+    new_membership = _membership(new_clusters)
+
+    changes: List[ClusterChange] = []
+    all_subjects = set(prev_membership) | set(new_membership)
+    for subject in all_subjects:
+        prev_id = prev_membership.get(subject)
+        new_id = new_membership.get(subject)
+        if prev_id == new_id:
+            continue
+
+        decision = decision_by_entity.get(subject)
+        if decision and decision.action in ("force_merge", "exempt_confirmed"):
+            change_type = "atomicity_override"
+            reasoning = decision.reasoning
+        else:
+            change_type = "ordinary"
+            reasoning = decision.reasoning if decision else ""
+
+        changes.append(ClusterChange(
+            subject=subject, from_cluster=prev_id, to_cluster=new_id,
+            change_type=change_type, reasoning=reasoning,
+        ))
+
+    return changes
+
+
+def run_bsp(
+    matrix_data: Dict[str, Dict[str, str]],
+    density_threshold: float = 0.5,
+    ea_weights: Dict[tuple, float] = None,
+    process_types: Dict[str, str] = None,
+    confirmed_overrides: Dict[str, Set[str]] = None,
+    ea_reasoning: Dict[tuple, str] = None,
+    adaptive_threshold: bool = False,
+    adaptive_k: float = 1.0,
+    adaptive_min_pairs: int = 5,
+) -> BSPResult:
     """
     Run the full 4-step BSP algorithm.
 
@@ -661,10 +1154,20 @@ def run_bsp(matrix_data: Dict[str, Dict[str, str]], density_threshold: float = 0
     ----------
     matrix_data : { process_name: { entity_name: "C"|"R"|"U"|"D" } }
         Raw CRUD matrix dict as stored in Matrix.matrix.
+    confirmed_overrides : { process_name: {entity_name, ...} }
+        Entities the architect has explicitly confirmed can leave an
+        atomic process's forced cluster, for this run only.
+    ea_reasoning : { (process_a, process_b): reasoning }
+        The LLM's justification text per ea_weights pair (same keys). Only
+        used to explain a PendingConflict — never affects clustering.
+    adaptive_threshold : if True, replaces density_threshold with a value
+        derived from this matrix's own similarity distribution instead of
+        the fixed constant. Default False keeps today's exact behaviour.
 
     Returns
     -------
-    BSPResult with clusters, reordered_matrix, entity_owners.
+    BSPResult with clusters, reordered_matrix, entity_owners, e2e_span,
+    hub_flags, pending_conflicts.
     """
     if not matrix_data:
         raise ValueError("CRUD matrix is empty — run the extraction step first.")
@@ -673,13 +1176,31 @@ def run_bsp(matrix_data: Dict[str, Dict[str, str]], density_threshold: float = 0
 
     df = pd.DataFrame(matrix_data).T   # rows=processes, cols=entities
 
-    owners    = _compute_entity_owners(df)                                           # Step 1
-    reordered = _reorder_matrix(df, ea_weights=ea_weights)                           # Step 2
-    clusters  = _extract_blocks(reordered, density_threshold=density_threshold,
-                                ea_weights=ea_weights, process_types=process_types)  # Step 4
-    final     = _absorb_pure_readers(clusters=clusters, df=df,
-                                     process_types=process_types)
+    hub_flags = _detect_hubs(df)                                                     # 1. hub detection (reporting only)
+    owners    = _compute_entity_owners(df)                                           # 2. entity ownership (reporting only)
+    reordered = _reorder_matrix(df, ea_weights=ea_weights)                           # 3. affinity reordering
+
+    if adaptive_threshold:
+        proc_scores = _pairwise_scores(
+            list(reordered.index),
+            lambda a, b: _weighted_jaccard(reordered, a, b, "row"),
+        )
+        threshold = derive_threshold(proc_scores, k=adaptive_k,
+                                      min_pairs=adaptive_min_pairs, fallback=density_threshold)
+    else:
+        threshold = density_threshold
+
+    clusters, decisions = _extract_blocks(
+        reordered, density_threshold=threshold, ea_weights=ea_weights,
+        process_types=process_types, confirmed_overrides=confirmed_overrides,
+    )                                                                                  # 4. block extraction + constraints
+    pending_conflicts = _detect_pending_conflicts(
+        reordered, decisions, owners, ea_weights, ea_reasoning, threshold,
+    )                                                                                  # 5. atomicity-vs-constraint conflicts
+    final    = _absorb_pure_readers(clusters=clusters, df=df,
+                                     process_types=process_types)                     # 6. pure-reader cleanup
     e2e_span  = _compute_e2e_span(df, final, process_types)
 
     return BSPResult(clusters=final, reordered_matrix=reordered,
-                     entity_owners=owners, e2e_span=e2e_span)
+                     entity_owners=owners, e2e_span=e2e_span,
+                     hub_flags=hub_flags, pending_conflicts=pending_conflicts)
