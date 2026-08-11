@@ -8,7 +8,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from typing import List
 
-from .bsp import Cluster, EAWeight, EAWeightResult, SystemsAnalysisResult, MarketOption, EAComplianceResult, AsIsToBeResult
+from .bsp import Cluster, ProcessWeight, EntityWeight, ConstraintWeightsResult, SystemsAnalysisResult, MarketOption, EAComplianceResult, AsIsToBeResult
 from .matrix import MatrixResult #output schema
 
 load_dotenv()
@@ -17,7 +17,9 @@ load_dotenv()
 def _validate_extraction(data: dict, process_list: List[str]) -> List[str]:
     """
     Checks the extraction result against the hard rules stated in prompt.txt
-    (completeness, entity count, orphan entities, dangling references).
+    (completeness, entity count, orphan entities, entities never created,
+    dangling references, per-process density, and cross-process entity
+    sharing).
     Returns a list of human-readable issue descriptions — empty if all checks pass.
     """
     issues = []
@@ -47,6 +49,23 @@ def _validate_extraction(data: dict, process_list: List[str]) -> List[str]:
     if orphans:
         issues.append(f"{len(orphans)} entit(y/ies) defined but never used in any operation: {sorted(orphans)}")
 
+    # Every entity should be CREATED by at least one process — otherwise its data has no
+    # origin anywhere in this process landscape. Either the entity is wrong (merge it into
+    # whatever creates equivalent data) or the process that actually produces it is missing
+    # its Create operation. Same CRUD-matrix-anomaly literature already cited in bsp.py's hub
+    # detection: Bureš, Cerny, Frajtak & Ahmed, "Testing the Consistency of Business Data
+    # Objects Using Extended Static Testing of CRUD Matrices," Cluster Computing 22(S4), 2019.
+    created_entities = {
+        op["entity_name"] for op in data.get("operations", [])
+        if "C" in str(op.get("operation", "")).upper()
+    }
+    never_created = sorted(touched_entities - created_entities)
+    if never_created:
+        issues.append(
+            f"{len(never_created)} entit(y/ies) are read/updated but never created by any "
+            f"process — every entity needs a Create somewhere: {never_created[:10]}"
+        )
+
     op_process_names = {op["process_name"] for op in data.get("operations", [])}
     unknown_op_processes = op_process_names - output_names
     if unknown_op_processes:
@@ -61,6 +80,41 @@ def _validate_extraction(data: dict, process_list: List[str]) -> List[str]:
     if processes_with_no_ops:
         issues.append(f"{len(processes_with_no_ops)} process(es) have zero operations and would vanish from the matrix: {sorted(processes_with_no_ops)[:10]}")
 
+    # Density: prompt.txt requires 4-6 CRUD entries per process. Too few gives BSP almost
+    # nothing to cluster on for that process; too many usually means padding with weak reads.
+    op_counts: dict[str, int] = {}
+    for op in data.get("operations", []):
+        op_counts[op["process_name"]] = op_counts.get(op["process_name"], 0) + 1
+
+    too_sparse = sorted(p for p, n in op_counts.items() if 0 < n < 4)
+    if too_sparse:
+        issues.append(
+            f"{len(too_sparse)} process(es) have fewer than the required 4 CRUD entries "
+            f"(density requirement): {too_sparse[:10]}"
+        )
+
+    too_dense = sorted(p for p, n in op_counts.items() if n > 6)
+    if too_dense:
+        issues.append(
+            f"{len(too_dense)} process(es) have more than the allowed 6 CRUD entries "
+            f"(density requirement): {too_dense[:10]}"
+        )
+
+    # Entities are supposed to be SHARED data objects (prompt.txt's ENTITIES section) — one
+    # touched by only a single process gives BSP clustering no cross-process signal at all.
+    # A handful is normal, but if most entities end up this way the extraction likely fell
+    # back to a private entity per process instead of finding the real overlaps.
+    entity_process_counts: dict[str, set] = {}
+    for op in data.get("operations", []):
+        entity_process_counts.setdefault(op["entity_name"], set()).add(op["process_name"])
+    single_process_entities = sorted(e for e, procs in entity_process_counts.items() if len(procs) < 2)
+    if entity_names and len(single_process_entities) > len(entity_names) / 2:
+        issues.append(
+            f"{len(single_process_entities)} of {len(entity_names)} entities are touched by only one "
+            f"process each — entities should be shared data objects genuinely touched by multiple "
+            f"processes, not a private entity per process: {single_process_entities[:10]}"
+        )
+
     return issues
 
 
@@ -70,32 +124,76 @@ class Generator:
         self.llm = ChatOpenAI(model=model_name, temperature=0, request_timeout=120)
         self.structured_output = self.llm.with_structured_output(MatrixResult)
 
+    def _resolve_biases(self, biases, canonical: dict, attr_a: str, attr_b: str, label: str):
+        """
+        Shared name-resolution loop for both axes: validates the LLM's names
+        against the canonical (real) name list, skips anything hallucinated,
+        and builds the weight_map/reasoning_map keyed by sorted tuples — the
+        same shape bsp.py's _affinity / _group_processes / _group_entities
+        look up by. attr_a/attr_b are the Pydantic field names to read
+        (first_process/second_process for ProcessWeight, first_entity/
+        second_entity for EntityWeight) since the two schemas share this
+        exact same shape otherwise.
+        """
+        weight_map = {}
+        reasoning_map = {}
+        skipped = []
+        for bias in biases:
+            name_a = getattr(bias, attr_a).strip().lower()
+            name_b = getattr(bias, attr_b).strip().lower()
+
+            resolved_a = canonical.get(name_a)
+            resolved_b = canonical.get(name_b)
+
+            if resolved_a is None or resolved_b is None:
+                # LLM hallucinated a name — skip so it doesn't silently zero-out.
+                skipped.append((getattr(bias, attr_a), getattr(bias, attr_b)))
+                continue
+
+            # Keys must be sorted so (A,B) == (B,A) everywhere in bsp.py.
+            pair = tuple(sorted([resolved_a, resolved_b]))
+            weight_map[pair] = bias.weight
+            reasoning_map[pair] = bias.reasoning
+            print(f"  {label} Bias: {pair} -> {bias.weight:+.2f}  ({bias.reasoning})")
+
+        if skipped:
+            print(f"  WARNING: {len(skipped)} {label.lower()} bias(es) skipped — LLM used unrecognised names: {skipped}")
+
+        return weight_map, reasoning_map
+
     async def _compute_ea_weights(self, current_clusters: List[Cluster], ea_principles: str, user_constraints: str = ""):
         """
-        Analyzes the current BSP result and returns a mapping of
-        (first_process, second_process): weight to refine the next iteration.
+        Analyzes the current BSP result and returns weights on two axes:
+        process pairs (feeds bsp.py's _group_processes) and entity pairs
+        (feeds _group_entities directly) — see bsp.py's module docstring
+        for why both exist.
 
-        Keys are always sorted tuples of the original process names so they
-        match the lookup keys built inside bsp.py's _affinity / _extract_blocks.
+        Returns (process_weights, process_reasoning, entity_weights, entity_reasoning).
+        Keys are always sorted tuples of the original names so they match
+        the lookup keys built inside bsp.py.
         """
-        # Build a canonical name map: lowercase-stripped → original name.
+        # Build canonical name maps: lowercase-stripped → original name.
         # This is the source of truth used to validate names the LLM returns.
         all_process_names: List[str] = []
+        all_entity_names: List[str] = []
         for c in current_clusters:
             all_process_names.extend(c.processes)
-        canonical: dict[str, str] = {p.strip().lower(): p for p in all_process_names}
+            all_entity_names.extend(c.entities)
+        canonical_procs: dict[str, str] = {p.strip().lower(): p for p in all_process_names}
+        canonical_ents: dict[str, str] = {e.strip().lower(): e for e in all_entity_names}
 
         cluster_summary = "\n".join([c.summary() for c in current_clusters])
 
-        # Embed the exact process names in the prompt so the LLM cannot drift.
+        # Embed the exact process/entity names in the prompt so the LLM cannot drift.
         exact_names_list = "\n".join(f"  - {p}" for p in all_process_names)
+        exact_entity_names_list = "\n".join(f"  - {e}" for e in all_entity_names)
 
         prompt_path = os.path.join(os.path.dirname(__file__), "..", "resources", "bsp_prompt.txt")
         with open(prompt_path, "r", encoding="utf-8") as f:
             base_instructions = f.read()
         prompt = ChatPromptTemplate.from_template(base_instructions + "\n\n")
 
-        weight_llm = self.llm.with_structured_output(EAWeightResult)
+        weight_llm = self.llm.with_structured_output(ConstraintWeightsResult)
 
         # Let exceptions propagate — a silent {} hides real problems and
         # makes the final matrix identical to the initial one.
@@ -104,40 +202,23 @@ class Generator:
             "user_constraints": user_constraints if user_constraints.strip() else "(none provided)",
             "cluster_summary": cluster_summary,
             "exact_names_list": exact_names_list,
+            "exact_entity_names_list": exact_entity_names_list,
         })
 
-        weight_map = {}
-        reasoning_map = {}
-        skipped = []
-        for bias in response.biases:
-            # Normalize both names to match against canonical map.
-            norm_a = bias.first_process.strip().lower()
-            norm_b = bias.second_process.strip().lower()
+        process_weights, process_reasoning = self._resolve_biases(
+            response.process_biases, canonical_procs, "first_process", "second_process", "Process",
+        )
+        entity_weights, entity_reasoning = self._resolve_biases(
+            response.entity_biases, canonical_ents, "first_entity", "second_entity", "Entity",
+        )
 
-            resolved_a = canonical.get(norm_a)
-            resolved_b = canonical.get(norm_b)
-
-            if resolved_a is None or resolved_b is None:
-                # LLM hallucinated a name — skip so it doesn't silently zero-out.
-                skipped.append((bias.first_process, bias.second_process))
-                continue
-
-            # Keys must be sorted so (A,B) == (B,A) everywhere in bsp.py.
-            pair = tuple(sorted([resolved_a, resolved_b]))
-            weight_map[pair] = bias.weight
-            reasoning_map[pair] = bias.reasoning
-            print(f"  EA Bias: {pair} -> {bias.weight:+.2f}  ({bias.reasoning})")
-
-        if skipped:
-            print(f"  WARNING: {len(skipped)} bias(es) skipped — LLM used unrecognised names: {skipped}")
-
-        if not weight_map:
-            print("  WARNING: No valid EA weights were produced. "
+        if not process_weights and not entity_weights:
+            print("  WARNING: No valid weights were produced on either axis. "
                   "The final matrix will be identical to the initial one.")
         else:
-            print(f"  {len(weight_map)} EA weight(s) applied successfully.")
+            print(f"  {len(process_weights)} process weight(s), {len(entity_weights)} entity weight(s) applied successfully.")
 
-        return weight_map, reasoning_map
+        return process_weights, process_reasoning, entity_weights, entity_reasoning
 
     async def describe_systems(
         self,

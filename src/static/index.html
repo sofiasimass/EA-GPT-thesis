@@ -992,6 +992,19 @@ body {
 .ptype-select.pt-ambiguous { color: var(--c-u); border-color: rgba(251,191,36,.35); }
 .ptype-changed { font-size: 9px; color: var(--text3); text-transform: uppercase; letter-spacing: .3px; margin-left: 6px; }
 
+/* ────── Atomicity-override confirmation ────── */
+.override-list { display: flex; flex-direction: column; gap: 4px; }
+.override-group { padding: 12px 0; border-top: 1px solid var(--border); }
+.override-group:first-child { border-top: none; }
+.override-process-name { font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 8px; }
+.override-row { padding: 8px 0 8px 12px; border-left: 2px solid var(--border); margin-bottom: 8px; }
+.override-row:last-child { margin-bottom: 0; }
+.override-text { font-size: 12px; color: var(--text2); line-height: 1.5; margin: 0 0 8px; }
+.override-choice { display: flex; gap: 18px; flex-wrap: wrap; }
+.override-choice label { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text); cursor: pointer; }
+.override-choice input[type="radio"] { accent-color: var(--c-r); cursor: pointer; }
+.override-choice label:has(input[value="true"]) { color: var(--c-u); }
+
 /* misc */
 .hidden { display: none !important; }
 svg { display: block; }
@@ -1312,6 +1325,7 @@ function handleMsg(msg) {
     case 'constraints_found': appendConstraintsFound(msg.constraints); break;
     case 'crud_matrix':       appendCrudMatrix(msg); break;
     case 'process_type_review': appendProcessTypeReview(msg); break;
+    case 'atomicity_override_confirm': appendAtomicityOverrideConfirm(msg); break;
     case 'clustering':        appendClustering(msg); break;
     case 'question':          appendQuestion(msg); break;
     case 'pick_constraint':   appendConstraintPicker(msg.inferred); break;
@@ -1451,6 +1465,71 @@ function appendProcessTypeReview(msg) {
   };
 }
 
+// Shown when a constraint's weight is strong enough to conflict with an atomic
+// process's forced write-co-location — e.g. the process creates two entities
+// that the constraint wants kept in separate systems. Nothing is ever applied
+// silently: each conflict is explained in plain language (no raw weight
+// numbers) and the architect decides per entity whether atomicity or the
+// constraint wins. One process can have several conflicting entities, shown
+// grouped together with one decision each.
+function appendAtomicityOverrideConfirm(msg) {
+  stopLoader();
+  state.stage = 'override_review';
+  const card = document.createElement('div');
+  card.className = 'qcard';
+  card.id = 'override-card';
+
+  const groups = msg.candidates.map((c, pi) => {
+    const rows = c.conflicts.map((cf, ei) => {
+      const mergeText = cf.conflicting_process
+        ? `Currently merged with <strong>${escHtml(cf.conflicting_process)}</strong>'s system via <em>${escHtml(cf.entity)}</em>`
+        : `Currently forced together with <em>${escHtml(cf.entity)}</em> (created by this same process)`;
+      return `
+      <div class="override-row">
+        <p class="override-text">
+          ${mergeText} — ${escHtml(cf.reasoning)}
+        </p>
+        <div class="override-choice">
+          <label><input type="radio" name="ov-${pi}-${ei}" value="true"> Split apart — apply the constraint</label>
+          <label><input type="radio" name="ov-${pi}-${ei}" value="false" checked> Keep merged — atomicity wins</label>
+        </div>
+      </div>`;
+    }).join('');
+    return `
+      <div class="override-group" data-proc-i="${pi}">
+        <div class="override-process-name">${escHtml(c.process)}</div>
+        ${rows}
+      </div>`;
+  }).join('');
+
+  card.innerHTML = `
+    <p>Some architectural constraints conflict with the atomicity rule (a process's writes
+    normally force everything it creates into one cluster). Review each conflict below and
+    decide which one wins:</p>
+    <div class="override-list">${groups}</div>
+    <div class="choices" style="margin-top:14px">
+      <button class="choice yes-btn" id="override-confirm-btn">Confirm and continue →</button>
+    </div>`;
+  addAiRow(card, 'wide');
+
+  document.getElementById('override-confirm-btn').onclick = () => {
+    const decisions = {};
+    msg.candidates.forEach((c, pi) => {
+      const entityDecisions = {};
+      c.conflicts.forEach((cf, ei) => {
+        const checked = card.querySelector(`input[name="ov-${pi}-${ei}"]:checked`);
+        entityDecisions[cf.entity] = !!(checked && checked.value === 'true');
+      });
+      decisions[c.process] = entityDecisions;
+    });
+    card.querySelectorAll('button, input').forEach(el => el.disabled = true);
+    const n = Object.values(decisions).reduce((sum, ed) => sum + Object.values(ed).filter(Boolean).length, 0);
+    addUserBubble(n ? `✓ Applied ${n} override(s)` : '✓ Kept atomicity — no overrides applied');
+    state.ws.send(JSON.stringify({ type: 'answer', value: decisions }));
+    state.stage = 'running';
+  };
+}
+
 // One chip per ISA metric for this clustering iteration, with a delta vs. the
 // previous iteration when one exists — all 5 metrics are higher-is-better (ideal 1.0),
 // so a green uptick is always an improvement and a red downtick always a regression.
@@ -1518,7 +1597,7 @@ function appendClustering(msg) {
   // Reordered matrix
   const body = document.createElement('div');
   body.className = 'card-body';
-  body.appendChild(buildClusteredMatrix(msg.matrix, msg.clusters));
+  body.appendChild(buildClusteredMatrix(msg.matrix, msg.clusters, msg.process_span));
   wrap.appendChild(body);
 
   addAiRow(wrap, 'wide');
@@ -1745,6 +1824,29 @@ function makeMatrixLoader(type) {
 // CRUD op text colors rendered on top of cluster background
 const OP_COLORS = { C: '#4ae296', R: '#60a5fa', U: '#fbbf24', D: '#f87171' };
 
+// A cell can hold combined ops like "CU" or "CRUD" (Matrix.add_entry merges
+// multiple operation records on the same process/entity pair). 'CRUD'.includes(val)
+// only works for single characters — it's a SUBSTRING check, and "CU" is not a
+// substring of "CRUD" (C is followed by R there, not U), so it silently fails for
+// any multi-char combination that isn't a contiguous run within "CRUD" itself.
+function isCrudValue(val) {
+  return !!val && /^[CRUD]+$/.test(val);
+}
+
+// For a combined cell like "CU", OP_COLORS[val] is undefined (it's keyed by single
+// letters) and silently falls back to white. Pick the colour of whichever operation
+// in the cell has the highest priority instead — same C > U > D > R ordering bsp.py's
+// _OP_PRIORITY already uses to decide what a cell's "real" priority is.
+const CELL_OP_PRIORITY = { C: 4, U: 3, D: 2, R: 1 };
+function dominantOpColor(val) {
+  let best = null, bestPriority = -1;
+  for (const ch of val) {
+    const p = CELL_OP_PRIORITY[ch] || 0;
+    if (p > bestPriority) { bestPriority = p; best = ch; }
+  }
+  return OP_COLORS[best] || '#fff';
+}
+
 function hexToRgba(hex, alpha) {
   const r = parseInt(hex.slice(1,3), 16);
   const g = parseInt(hex.slice(3,5), 16);
@@ -1754,7 +1856,7 @@ function hexToRgba(hex, alpha) {
 
 // procCluster: { processName → clusterIdx } — null for the plain CRUD matrix
 // entCluster:  { entityName  → clusterIdx } — null for the plain CRUD matrix
-function buildMatrixTable(processes, entities, data, procCluster, entCluster) {
+function buildMatrixTable(processes, entities, data, procCluster, entCluster, spanIndices) {
   const scroll = document.createElement('div');
   scroll.className = 'matrix-scroll';
 
@@ -1810,19 +1912,43 @@ function buildMatrixTable(processes, entities, data, procCluster, entCluster) {
       const val = (data[e] && data[e][p]) ? String(data[e][p]).toUpperCase() : '';
       const eci = entCluster ? (entCluster[e] ?? -1) : -1;
       const inBlock = pci >= 0 && eci >= 0 && pci === eci;
+      // A cell outside the process's own cluster block, but still on this
+      // process's recorded process_span — a legitimate cross-system access
+      // (e.g. an atomic process that owns one cluster but still updates an
+      // entity that a confirmed override split into another cluster), not
+      // just a stray touch. Marked distinctly so it doesn't read the same
+      // as ordinary dimmed noise.
+      const isSpanAccess = !inBlock && isCrudValue(val)
+        && spanIndices && spanIndices[p] && spanIndices[p].has(eci);
 
       if (inBlock) {
         const col = CLUSTER_COLORS[pci % CLUSTER_COLORS.length];
         td.dataset.cluster = pci;
         td.style.background = hexToRgba(col, val ? 0.28 : 0.10);
-        if (val && 'CRUD'.includes(val)) {
+        if (isCrudValue(val)) {
           td.textContent = val;
-          td.style.color = OP_COLORS[val] || '#fff';
+          td.style.color = dominantOpColor(val);
           td.style.fontWeight = '700';
         }
-      } else if (val && 'CRUD'.includes(val)) {
-        td.classList.add(`op-${val}`);
+      } else if (isSpanAccess) {
+        // Colour it like the cluster it's reaching into, not an unrelated
+        // accent colour — a lighter tint than inBlock's, since the process
+        // accesses this cluster but doesn't belong to it.
+        const col = CLUSTER_COLORS[eci % CLUSTER_COLORS.length];
+        td.dataset.cluster = eci;
+        td.style.background = hexToRgba(col, 0.18);
         td.textContent = val;
+        td.style.color = dominantOpColor(val);
+        td.style.fontWeight = '700';
+        td.title = 'Cross-system access: this process reaches into another cluster (see process_span)';
+      } else if (isCrudValue(val)) {
+        // op-C/op-R/op-U/op-D CSS classes only exist for single letters — a
+        // combined value like "CU" would match none of them and render
+        // unstyled, so set background/colour inline via the dominant op
+        // instead of relying on `op-${val}` matching a real class.
+        td.textContent = val;
+        td.style.color = dominantOpColor(val);
+        td.style.background = hexToRgba(dominantOpColor(val), 0.18);
         td.style.opacity = '0.5';
       } else {
         td.classList.add('op-x');
@@ -1836,7 +1962,7 @@ function buildMatrixTable(processes, entities, data, procCluster, entCluster) {
   return scroll;
 }
 
-function buildClusteredMatrix(matrixMsg, clusters) {
+function buildClusteredMatrix(matrixMsg, clusters, processSpan) {
   // Re-sort processes and entities strictly by cluster → diagonal blocks
   const procSet = new Set(matrixMsg.processes);
   const entSet  = new Set(matrixMsg.entities);
@@ -1856,7 +1982,19 @@ function buildClusteredMatrix(matrixMsg, clusters) {
     c.entities .forEach(e => { entCluster[e]  = i; });
   });
 
-  return buildMatrixTable(sortedProcs, sortedEnts, matrixMsg.data, procCluster, entCluster);
+  // process_span comes from the backend keyed by real cluster IDs (bsp.Cluster.id,
+  // 1-based); procCluster/entCluster above use the 0-based array index instead, so
+  // translate through the id -> index map rather than assuming id == index + 1.
+  const idToIndex = {};
+  clusters.forEach((c, i) => { idToIndex[c.id] = i; });
+  const spanIndices = {};
+  if (processSpan) {
+    Object.entries(processSpan).forEach(([proc, ids]) => {
+      spanIndices[proc] = new Set(ids.map(id => idToIndex[id]).filter(i => i !== undefined));
+    });
+  }
+
+  return buildMatrixTable(sortedProcs, sortedEnts, matrixMsg.data, procCluster, entCluster, spanIndices);
 }
 
 // ───────────────────────── User interactions ─────────────────────────

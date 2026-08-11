@@ -4,6 +4,7 @@ import csv
 import io
 import json
 import os
+from datetime import datetime
 from pathlib import Path
 
 import fitz
@@ -52,6 +53,32 @@ def _matrix_payload(df: pd.DataFrame) -> dict:
     }
 
 
+def _save_initial_matrix(mat: Matrix) -> None:
+    """
+    Saves the just-extracted matrix (mat.matrix + mat.process_types) into
+    src/resources/initial_matrices/, one file per run, so real matrices
+    accumulate there for testing bsp.py against (e.g. the adaptive
+    threshold) instead of only having synthetic ones.
+
+    Same shape run_bsp(matrix_data, process_types=...) expects, so loading
+    one back is just json.load(f)["matrix"] / ["process_types"].
+    """
+    out_dir = Path(__file__).parent / "resources" / "initial_matrices"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    n_procs = len(mat.matrix)
+    n_ents = len({e for ents in mat.matrix.values() for e in ents})
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    out_path = out_dir / f"matrix_{timestamp}_{n_procs}p_{n_ents}e.json"
+
+    out_path.write_text(json.dumps({
+        "saved_at": datetime.now().isoformat(),
+        "matrix": mat.matrix,
+        "process_types": mat.process_types,
+    }, indent=2), encoding="utf-8")
+    print(f"Initial matrix saved to {out_path}")
+
+
 async def pipeline(session: Session):
     try:
         gen = Generator()
@@ -96,6 +123,8 @@ async def pipeline(session: Session):
         if processes_with_no_ops:
             print(f"  WARNING: {len(processes_with_no_ops)} process(es) got zero valid operations "
                   f"and will be missing from the matrix: {processes_with_no_ops}")
+
+        _save_initial_matrix(mat)
 
         data_quality_warnings = {
             "skipped_operations": [
@@ -155,14 +184,20 @@ async def pipeline(session: Session):
             "clusters": [c.to_dict() for c in bsp.clusters],
             "matrix": _matrix_payload(bsp.reordered_matrix),
             "metrics": iteration_metrics,
+            "process_span": bsp.process_span,
         })
 
         principles_path = Path(__file__).parent / "resources" / "ea_principles.txt"
         baseline = principles_path.read_text(encoding="utf-8")
 
         acc_constraints = ""
-        acc_weights: dict = {}
-        acc_reasoning: dict = {}
+        acc_process_weights: dict = {}
+        acc_process_reasoning: dict = {}
+        acc_entity_weights: dict = {}
+        acc_entity_reasoning: dict = {}
+        acc_confirmed_overrides: dict[str, set] = {}
+        acc_declined_overrides: dict[str, set] = {}
+        acc_override_history: list[dict] = []  # full audit trail — why each override was decided
         iteration = 0
 
         while True:
@@ -190,11 +225,74 @@ async def pipeline(session: Session):
                 "message": "Analysing constraints and computing EA weights…",
                 "loading": "weights",
             })
-            w, r = await gen._compute_ea_weights(bsp.clusters, baseline, acc_constraints)
-            acc_weights.update(w)
-            acc_reasoning.update(r)
+            pw, pr, ew, er = await gen._compute_ea_weights(bsp.clusters, baseline, acc_constraints)
+            acc_process_weights.update(pw)
+            acc_process_reasoning.update(pr)
+            acc_entity_weights.update(ew)
+            acc_entity_reasoning.update(er)
 
-            bsp = run_bsp(mat.matrix, ea_weights=acc_weights, process_types=mat.process_types)
+            trial = run_bsp(
+                mat.matrix, process_weights=acc_process_weights, process_reasoning=acc_process_reasoning,
+                process_types=mat.process_types, confirmed_overrides=acc_confirmed_overrides,
+                entity_weights=acc_entity_weights, entity_reasoning=acc_entity_reasoning,
+            )
+
+            # Group unresolved conflicts by process — one process can have several
+            # conflicting entities, each gets its own row, but they're shown together.
+            new_by_process: dict = {}
+            for pc in trial.pending_conflicts:
+                if pc.entity in acc_confirmed_overrides.get(pc.process, set()):
+                    continue  # already confirmed in a prior iteration
+                if pc.entity in acc_declined_overrides.get(pc.process, set()):
+                    continue  # already declined — don't ask again
+                new_by_process.setdefault(pc.process, []).append(pc)
+
+            if new_by_process:
+                await session.send({
+                    "type": "atomicity_override_confirm",
+                    "candidates": [
+                        {
+                            "process": proc,
+                            "conflicts": [
+                                {
+                                    "entity": pc.entity,
+                                    "conflicting_process": pc.conflicting_process,
+                                    "reasoning": pc.reasoning,
+                                }
+                                for pc in conflicts
+                            ],
+                        }
+                        for proc, conflicts in new_by_process.items()
+                    ],
+                })
+                decisions = await session.wait()
+                if isinstance(decisions, dict):
+                    for proc, entity_decisions in decisions.items():
+                        if proc not in new_by_process or not isinstance(entity_decisions, dict):
+                            continue
+                        conflict_by_entity = {pc.entity: pc for pc in new_by_process[proc]}
+                        for entity, accepted in entity_decisions.items():
+                            target = acc_confirmed_overrides if accepted else acc_declined_overrides
+                            target.setdefault(proc, set()).add(entity)
+
+                            pc = conflict_by_entity.get(entity)
+                            acc_override_history.append({
+                                "iteration": iteration,
+                                "process": proc,
+                                "entity": entity,
+                                "conflicting_process": pc.conflicting_process if pc else "",
+                                "reasoning": pc.reasoning if pc else "",
+                                "decision": "confirmed" if accepted else "declined",
+                            })
+
+                bsp = run_bsp(
+                    mat.matrix, process_weights=acc_process_weights, process_reasoning=acc_process_reasoning,
+                    process_types=mat.process_types, confirmed_overrides=acc_confirmed_overrides,
+                    entity_weights=acc_entity_weights, entity_reasoning=acc_entity_reasoning,
+                )
+            else:
+                bsp = trial
+
             iteration_metrics = compute_isa_metrics(bsp.clusters, mat.matrix, mat.process_types)
             await session.send({
                 "type": "clustering",
@@ -203,23 +301,43 @@ async def pipeline(session: Session):
                 "clusters": [c.to_dict() for c in bsp.clusters],
                 "matrix": _matrix_payload(bsp.reordered_matrix),
                 "metrics": iteration_metrics,
+                "process_span": bsp.process_span,
             })
 
             bsp_iterations.append({
                 "iteration": iteration,
                 "user_constraint": constraint,
-                "ea_weights": {
-                    str(k): {"weight": v, "reasoning": r.get(k, "")}
-                    for k, v in w.items()
+                "process_weights": {
+                    str(k): {"weight": v, "reasoning": pr.get(k, "")}
+                    for k, v in pw.items()
+                },
+                "entity_weights": {
+                    str(k): {"weight": v, "reasoning": er.get(k, "")}
+                    for k, v in ew.items()
+                },
+                "atomicity_overrides": {
+                    "confirmed": {p: sorted(es) for p, es in acc_confirmed_overrides.items()},
+                    "declined": {p: sorted(es) for p, es in acc_declined_overrides.items()},
+                    "still_pending": [
+                        {"process": pc.process, "entity": pc.entity,
+                         "conflicting_process": pc.conflicting_process, "reasoning": pc.reasoning}
+                        for pc in bsp.pending_conflicts
+                    ],
+                    "resolution_history": list(acc_override_history),
                 },
                 "clusters": [c.to_dict() for c in bsp.clusters],
                 "entity_owners": bsp.entity_owners,
+                "process_span": bsp.process_span,
                 "metrics": iteration_metrics,
             })
 
         wrl = [
-            f"{k[0]} ↔ {k[1]}: {acc_weights[k]:+.2f} — {acc_reasoning.get(k, '')}"
-            for k in acc_reasoning
+            f"{k[0]} ↔ {k[1]}: {acc_process_weights[k]:+.2f} — {acc_process_reasoning.get(k, '')}"
+            for k in acc_process_reasoning
+        ]
+        wrl += [
+            f"{k[0]} ↔ {k[1]} (entities): {acc_entity_weights[k]:+.2f} — {acc_entity_reasoning.get(k, '')}"
+            for k in acc_entity_reasoning
         ]
         weight_history = "\n".join(wrl)
 
@@ -395,14 +513,30 @@ async def pipeline(session: Session):
             "initial_bsp": {
                 "clusters": [c.to_dict() for c in initial_bsp.clusters],
                 "entity_owners": initial_bsp.entity_owners,
+                "process_span": initial_bsp.process_span,
             },
             "bsp_iterations": bsp_iterations,
             "final_bsp": {
                 "clusters": [c.to_dict() for c in bsp.clusters],
                 "entity_owners": bsp.entity_owners,
-                "ea_weights": {
-                    str(k): {"weight": v, "reasoning": acc_reasoning.get(k, "")}
-                    for k, v in acc_weights.items()
+                "process_span": bsp.process_span,
+                "process_weights": {
+                    str(k): {"weight": v, "reasoning": acc_process_reasoning.get(k, "")}
+                    for k, v in acc_process_weights.items()
+                },
+                "entity_weights": {
+                    str(k): {"weight": v, "reasoning": acc_entity_reasoning.get(k, "")}
+                    for k, v in acc_entity_weights.items()
+                },
+                "atomicity_overrides": {
+                    "confirmed": {p: sorted(es) for p, es in acc_confirmed_overrides.items()},
+                    "declined": {p: sorted(es) for p, es in acc_declined_overrides.items()},
+                    "still_pending": [
+                        {"process": pc.process, "entity": pc.entity,
+                         "conflicting_process": pc.conflicting_process, "reasoning": pc.reasoning}
+                        for pc in bsp.pending_conflicts
+                    ],
+                    "resolution_history": list(acc_override_history),
                 },
                 "user_constraints": acc_constraints.strip(),
             },

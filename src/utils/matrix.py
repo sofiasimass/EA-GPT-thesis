@@ -108,8 +108,16 @@ class Matrix:
 
         if p_name not in self.matrix:
             self.matrix[p_name] = {}
-        
-        self.matrix[p_name][e_name] = operation.upper()
+
+        # The LLM emits one entry per operation type, so the same (process, entity)
+        # pair can arrive here multiple times (e.g. C, then R, then U on the same
+        # entity for a process that fully manages it). Combine into "CRU" instead
+        # of overwriting, so the higher-priority ops don't silently disappear —
+        # bsp.py's _op_weight already expects and handles combined strings like this.
+        op = operation.upper()
+        existing = self.matrix[p_name].get(e_name, "")
+        if op not in existing:
+            self.matrix[p_name][e_name] = existing + op
 
     def export_to_csv(self, filename: str):
         data = []

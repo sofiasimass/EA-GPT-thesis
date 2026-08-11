@@ -1,0 +1,99 @@
+{
+  "saved_at": "2026-08-11T10:18:22.880985",
+  "matrix": {
+    "Recipe development and testing": {
+      "Recipe": "U"
+    },
+    "Purchase order creation and approvals": {
+      "Purchase Order": "U"
+    },
+    "Stocking and storage allocation": {
+      "Inventory Record": "U"
+    },
+    "Stock counts and reconciliation": {
+      "Inventory Record": "U"
+    },
+    "Waste logging and spoilage management": {
+      "Waste Record": "U"
+    },
+    "Prep planning": {
+      "Prep Plan": "U"
+    },
+    "Mise-en-place production and labeling": {
+      "Mise-en-place Log": "U"
+    },
+    "Line execution during service": {
+      "Service Log": "U"
+    },
+    "Post-service reconciliation": {
+      "Service Log": "U"
+    },
+    "Waitlist, seating plan, pacing controls": {
+      "Reservation": "U"
+    },
+    "Greeting/seating and experience setup": {
+      "Guest Profile": "U"
+    },
+    "Order taking, pairing guidance, course pacing": {
+      "Order": "U"
+    },
+    "Online order intake and slot assignment": {
+      "Online Order": "U"
+    },
+    "Kitchen preparation (take-away recipes/constraints)": {
+      "Online Order": "U"
+    },
+    "Lead intake and qualification": {
+      "Event Lead": "U"
+    },
+    "Segmentation and campaign planning": {
+      "Campaign": "U"
+    },
+    "Content and channel execution": {
+      "Campaign": "U"
+    },
+    "Loyalty/membership management": {
+      "Loyalty Program": "U"
+    },
+    "Reputation management": {
+      "Reputation Feedback": "U"
+    },
+    "Daily cash-up and reconciliation": {
+      "Financial Transaction": "U"
+    },
+    "Accounts payable/receivable": {
+      "Invoice": "U"
+    },
+    "Budget tracking and unit P&L management": {
+      "Budget": "U"
+    },
+    "HACCP plan maintenance and training enforcement": {
+      "HACCP Record": "U"
+    }
+  },
+  "process_types": {
+    "Recipe development and testing": "atomic",
+    "Purchase order creation and approvals": "atomic",
+    "Stocking and storage allocation": "atomic",
+    "Stock counts and reconciliation": "atomic",
+    "Waste logging and spoilage management": "atomic",
+    "Prep planning": "atomic",
+    "Mise-en-place production and labeling": "atomic",
+    "Line execution during service": "atomic",
+    "Post-service reconciliation": "atomic",
+    "Waitlist, seating plan, pacing controls": "atomic",
+    "Greeting/seating and experience setup": "atomic",
+    "Order taking, pairing guidance, course pacing": "atomic",
+    "Online order intake and slot assignment": "atomic",
+    "Kitchen preparation (take-away recipes/constraints)": "atomic",
+    "Lead intake and qualification": "atomic",
+    "Segmentation and campaign planning": "end_to_end",
+    "Content and channel execution": "end_to_end",
+    "Loyalty/membership management": "end_to_end",
+    "Reputation management": "end_to_end",
+    "Daily cash-up and reconciliation": "atomic",
+    "Accounts payable/receivable": "end_to_end",
+    "Budget tracking and unit P&L management": "end_to_end",
+    "HACCP plan maintenance and training enforcement": "atomic"
+  }
+}

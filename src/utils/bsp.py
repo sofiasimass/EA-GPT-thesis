@@ -44,7 +44,11 @@ Pipeline (see run_bsp):
          Entities they only READ may live in other clusters.
        • E2E processes: their entities may be split across clusters; the
          process itself is recorded as spanning those clusters,
-         representing cross-system integration dependencies.
+         representing cross-system integration dependencies. A confirmed
+         override (see below) creates the same kind of span for an
+         otherwise-atomic process: it keeps ownership of the cluster
+         holding what it CREATES, and the other cluster it still writes to
+         is recorded as an access, not a second ownership.
   4. _absorb_pure_readers — relocate any non-E2E process with zero C/U/D
      operations into whichever cluster owns most of what it reads.
 
@@ -57,6 +61,13 @@ that lets an architect's confirmed constraint exempt a specific entity from
 an atomic process's forced union — surfaced as BSPResult.pending_conflicts
 before anything is applied. classify_changes() is exported for comparing
 two iterations' clusters, but isn't called from run_bsp itself.
+
+Two independent axes of architect bias exist: process_weights (a pair of
+PROCESSES, feeds _group_processes and reordering) and entity_weights (a
+pair of ENTITIES, feeds _group_entities directly). Neither can silently
+break an atomic process's forced write co-location — a conflict between
+either axis and atomicity only ever surfaces as a PendingConflict, never
+applied without confirmation.
 
 process_type values (set by the LLM during extraction):
   "atomic"     — single indivisible transaction; cluster boundaries drawn tightly.
@@ -74,14 +85,21 @@ from pydantic import BaseModel, Field
 
 #schemas
 
-class EAWeight(BaseModel):
+class ProcessWeight(BaseModel):
     first_process: str = Field(description="The name of the first process in the pair")
     second_process: str = Field(description="The name of the second process in the pair")
     weight: float = Field(description="The bias value between -0.5 and 0.5")
     reasoning: str = Field(description="Architectural justification for this weight")
 
-class EAWeightResult(BaseModel):
-    biases: List[EAWeight]
+class EntityWeight(BaseModel):
+    first_entity: str = Field(description="The name of the first entity in the pair")
+    second_entity: str = Field(description="The name of the second entity in the pair")
+    weight: float = Field(description="The bias value between -0.5 and 0.5")
+    reasoning: str = Field(description="Architectural justification for this weight")
+
+class ConstraintWeightsResult(BaseModel):
+    process_biases: List[ProcessWeight] = Field(default_factory=list)
+    entity_biases: List[EntityWeight] = Field(default_factory=list)
 
 
 class MarketOption(BaseModel):
@@ -211,7 +229,7 @@ class BSPResult:
     clusters: List[Cluster]
     reordered_matrix: pd.DataFrame   # rows=processes, cols=entities
     entity_owners: Dict[str, str]    # entity → owning process
-    e2e_span: Dict[str, List[int]] = field(default_factory=dict)  # e2e process → cluster ids it spans
+    process_span: Dict[str, List[int]] = field(default_factory=dict)  # process → cluster ids it spans (e2e or confirmed override)
     hub_flags: List[HubFlag] = field(default_factory=list)                 # processos/entidades que dominam a matriz (só alerta)
     pending_conflicts: List[PendingConflict] = field(default_factory=list)  # conflitos atomicidade vs. pesos, por confirmar
 
@@ -354,7 +372,7 @@ def _detect_hubs(df: pd.DataFrame, threshold: float = 0.5) -> List[HubFlag]:
     return flags
 
 
-def _affinity(df: pd.DataFrame, a: str, b: str, axis: str, ea_weights: Dict[tuple, float] = None) -> float:
+def _affinity(df: pd.DataFrame, a: str, b: str, axis: str, process_weights: Dict[tuple, float] = None) -> float:
     """
     Measure affinity between two processes (axis='row') or two entities (axis='col').
 
@@ -370,10 +388,10 @@ def _affinity(df: pd.DataFrame, a: str, b: str, axis: str, ea_weights: Dict[tupl
     Result is normalised to [0,1] by dividing by the theoretical maximum (4 × item count),
     so it stays in the same scale as the weighted Jaccard used in _extract_blocks.
 
-    ea_weights (architect-supplied biases in [-0.5, 0.5]) are added directly on top,
+    process_weights (architect-supplied biases in [-0.5, 0.5]) are added directly on top,
     allowing targeted boosts or penalties without a global scaling constant.
     """
-    ea_weights = ea_weights or {}
+    process_weights = process_weights or {}
     max_possible = 4 * (len(df.columns) if axis == "row" else len(df.index))
 
     if axis == "row":
@@ -396,7 +414,7 @@ def _affinity(df: pd.DataFrame, a: str, b: str, axis: str, ea_weights: Dict[tupl
     # Bias arquitetural: somado diretamente — weights em [-0.5, 0.5] têm
     # impacto proporcional sobre uma afinidade entre [0, 1].
     pair = tuple(sorted([a, b]))
-    weight = ea_weights.get(pair, 0)
+    weight = process_weights.get(pair, 0)
 
     return shared_normalised + weight
 
@@ -430,20 +448,20 @@ def _cluster_name(entities: List[str]) -> str:
     return entities[0] if len(entities) == 1 else " / ".join(entities[:2])
 
 
-def _reorder_matrix(df: pd.DataFrame, ea_weights: Dict[tuple, float] = None) -> pd.DataFrame:
+def _reorder_matrix(df: pd.DataFrame, process_weights: Dict[tuple, float] = None) -> pd.DataFrame:
     """
     Reorder rows (processes) and columns (entities) so that items with high
     mutual affinity end up adjacent, producing a block-diagonal structure.
-    ea_weights shift affinity scores before reordering, so architect-supplied
+    process_weights shift affinity scores before reordering, so architect-supplied
     biases influence the final layout directly.
     """
     new_procs = _greedy_reorder(
         list(df.index),
-        lambda a, b: _affinity(df, a, b, "row", ea_weights)
+        lambda a, b: _affinity(df, a, b, "row", process_weights)
     )
     new_ents  = _greedy_reorder(
         list(df.columns),
-        lambda a, b: _affinity(df, a, b, "col", ea_weights)
+        lambda a, b: _affinity(df, a, b, "col", process_weights)
     )
     return df.loc[new_procs, new_ents]
 
@@ -478,6 +496,29 @@ def _weighted_jaccard(df: pd.DataFrame, a: str, b: str, axis: str) -> float:
         union_sum    = sum(max(_op_weight(df.at[o, a]), _op_weight(df.at[o, b])) for o in others)
 
     return intersection / union_sum if union_sum else 0
+
+
+def _entity_similarity_with_bias(df: pd.DataFrame, entity_weights: Dict[tuple, float] = None) -> Callable[[str, str], float]:
+    """
+    Uma função de similaridade entre duas entidades que já soma o peso do
+    arquiteto ao nível das entidades (entity_weights), quando existir para
+    aquele par — o mesmo princípio do bias em _affinity/_group_processes,
+    mas para o eixo das entidades, e já pronta a usar como
+    DecisionContext.similarity_fn (que só aceita uma função, sem bias_fn
+    à parte).
+
+    Usada em _detect_pending_conflicts: antes disto existir, o único sinal
+    negativo possível vinha de um peso entre dois PROCESSOS (via o dono da
+    entidade) — um proxy indireto. Agora uma restrição do arquiteto pode
+    dizer diretamente "estas duas entidades não podem estar juntas", sem
+    precisar de passar por que processo é que cria cada uma.
+    """
+    entity_weights = entity_weights or {}
+
+    def fn(a: str, b: str) -> float:
+        return _weighted_jaccard(df, a, b, "col") + entity_weights.get(tuple(sorted([a, b])), 0)
+
+    return fn
 
 
 def _average_linkage_group(
@@ -519,12 +560,12 @@ def _average_linkage_group(
     return groups
 
 
-def _group_processes(df: pd.DataFrame, threshold: float, ea_weights: Dict[tuple, float] = None) -> List[List[str]]:
+def _group_processes(df: pd.DataFrame, threshold: float, process_weights: Dict[tuple, float] = None) -> List[List[str]]:
     """Agrupa processos, com os pesos do arquiteto a poder influenciar o resultado."""
-    ea_weights = ea_weights or {}
+    process_weights = process_weights or {}
 
     def bias(a: str, b: str) -> float:
-        return ea_weights.get(tuple(sorted([a, b])), 0)
+        return process_weights.get(tuple(sorted([a, b])), 0)
 
     return _average_linkage_group(
         list(df.index),
@@ -534,16 +575,27 @@ def _group_processes(df: pd.DataFrame, threshold: float, ea_weights: Dict[tuple,
     )
 
 
-def _group_entities(df: pd.DataFrame, threshold: float) -> List[List[str]]:
+def _group_entities(df: pd.DataFrame, threshold: float, entity_weights: Dict[tuple, float] = None) -> List[List[str]]:
     """
-    Agrupa entidades. Os pesos do arquiteto (ea_weights) são sobre pares de
-    processos, não fazem sentido aqui — o agrupamento de entidades usa só
-    o sinal estrutural do Jaccard.
+    Agrupa entidades, com pesos do arquiteto ao nível das entidades
+    (entity_weights) a poder influenciar o resultado — o mesmo princípio
+    do _group_processes, mas no eixo das entidades. Antes disto existir,
+    o agrupamento de entidades usava só o sinal estrutural do Jaccard,
+    porque o único peso que existia (process_weights) é sobre pares de
+    processos e não faz sentido aqui. Agora uma restrição do tipo "estas
+    duas entidades têm de ficar em sistemas separados" pode agir
+    diretamente neste passo, em vez de só ao nível dos processos.
     """
+    entity_weights = entity_weights or {}
+
+    def bias(a: str, b: str) -> float:
+        return entity_weights.get(tuple(sorted([a, b])), 0)
+
     return _average_linkage_group(
         list(df.columns),
         lambda a, b: _weighted_jaccard(df, a, b, "col"),
         threshold,
+        bias_fn=bias,
     )
 
 
@@ -732,37 +784,50 @@ def _detect_pending_conflicts(
     df: pd.DataFrame,
     decisions: List[Decision],
     entity_owners: Dict[str, str],
-    ea_weights: Dict[tuple, float],
-    ea_reasoning: Dict[tuple, str],
+    process_weights: Dict[tuple, float],
+    process_reasoning: Dict[tuple, str],
     threshold: float,
+    entity_weights: Dict[tuple, float] = None,
+    entity_reasoning: Dict[tuple, str] = None,
 ) -> List[PendingConflict]:
     """
     Para cada decisão "force_merge", pergunta: "e se este processo não
     fosse atómico, o que é que o agrupamento normal teria decidido?" Se a
     resposta fosse "separar", há um conflito real entre a regra da
-    atomicidade e o que o peso do arquiteto está a pedir — fica registado
-    aqui, mas nunca é aplicado sozinho, só depois de confirmado (ver
+    atomicidade e o que o arquiteto está a pedir — fica registado aqui,
+    mas nunca é aplicado sozinho, só depois de confirmado (ver
     confirmed_overrides em run_bsp).
 
-    Se não há ea_weights, não pode haver conflito nenhum — por isso
-    devolve logo lista vazia, sem correr o resto da função. É uma garantia
-    explícita, não um acaso da matemática.
+    Há dois eixos de onde pode vir o sinal negativo que desencadeia esta
+    verificação, e um não substitui o outro — somam-se:
+      - entity_weights: peso direto entre a âncora do processo (a primeira
+        entidade que ele escreve) e a entidade em causa. É o sinal mais
+        direto possível — "estas duas entidades não podem estar juntas",
+        sem ter de passar por que processo é que cria cada uma.
+      - process_weights: peso entre o processo atómico e o processo dono
+        da entidade em causa (via entity_owners) — o sinal antigo, mantido
+        porque por agora (antes da Fase 2) é o único que o prompt da LLM
+        sabe produzir. Só se aplica quando a entidade pertence a OUTRO
+        processo — não faz sentido "entrar em conflito" com uma entidade
+        que o próprio processo criou.
 
-    Duas coisas a que é preciso ter cuidado aqui:
-      - Uma entidade que o próprio processo criou não conta — não faz
-        sentido "entrar em conflito" com uma entidade que é dele mesmo.
-        Só interessa quando a entidade pertence a OUTRO processo.
-      - A comparação de entidades (_weighted_jaccard) nunca usa ea_weights
-        — essa regra já existia antes e não foi mudada. Por isso, para
-        esta verificação em concreto, soma-se o peso do par
-        (processo, dono-da-entidade) diretamente à similaridade, só
-        durante este teste — sem isso, o resultado seria sempre o mesmo
-        com ou sem pesos, e nunca refletiria o que o arquiteto pediu.
+    Se não há nenhum dos dois pesos, não pode haver conflito nenhum — por
+    isso devolve logo lista vazia, sem correr o resto da função.
+
+    A comparação de entidades (_weighted_jaccard) nunca usa nenhum destes
+    pesos por si só — essa regra não mudou. Por isso, para esta
+    verificação em concreto, soma-se o peso total (dos dois eixos) à
+    similaridade, só durante este teste — sem isso, o resultado seria
+    sempre o mesmo com ou sem pesos, e nunca refletiria o que o arquiteto
+    pediu.
     """
-    if not ea_weights:
+    process_weights = process_weights or {}
+    entity_weights = entity_weights or {}
+    if not process_weights and not entity_weights:
         return []
 
-    ea_reasoning = ea_reasoning or {}
+    process_reasoning = process_reasoning or {}
+    entity_reasoning = entity_reasoning or {}
     conflicts: List[PendingConflict] = []
 
     for decision in decisions:
@@ -771,48 +836,87 @@ def _detect_pending_conflicts(
 
         process = decision.subject
         entity = decision.entity
-        owner = entity_owners.get(entity, "")
-        if not owner or owner == process:
-            continue
-
-        pair = tuple(sorted([process, owner]))
-        weight = ea_weights.get(pair, 0)
-        if weight >= 0:
-            continue  # sem peso negativo para este par, não há sinal de conflito
 
         touched = [e for e in df.columns if _op_weight(df.at[process, e]) > _OP_PRIORITY["R"]]
         if not touched:
             continue
         anchor = touched[0]
 
-        def _biased_similarity(a: str, b: str, _w=weight) -> float:
-            return _weighted_jaccard(df, a, b, "col") + _w
+        entity_pair = tuple(sorted([anchor, entity]))
+        entity_bias = entity_weights.get(entity_pair, 0)
+
+        owner = entity_owners.get(entity, "")
+        process_pair = tuple(sorted([process, owner]))
+        process_bias = process_weights.get(process_pair, 0) if owner and owner != process else 0
+
+        total_bias = entity_bias + process_bias
+        if total_bias >= 0:
+            continue  # sem peso negativo em nenhum dos eixos, não há sinal de conflito
 
         probe_ctx = DecisionContext(
             threshold=threshold, process_types={process: "atomic"},
             confirmed_overrides={},
-            similarity_fn=_biased_similarity,
+            similarity_fn=_entity_similarity_with_bias(df, {entity_pair: total_bias}),
             anchor=anchor, ignore_atomicity=True,
         )
         counterfactual = decide(process, entity, probe_ctx)
 
         if counterfactual.action == "ordinary_split":
-            owner = entity_owners.get(entity, "")
-            reasoning = ea_reasoning.get(tuple(sorted([process, owner])), "") or counterfactual.reasoning
+            reasoning = (
+                entity_reasoning.get(entity_pair, "")
+                or process_reasoning.get(process_pair, "")
+                or counterfactual.reasoning
+            )
             conflicts.append(PendingConflict(
-                process=process, conflicting_process=owner, entity=entity,
-                adjusted_score=counterfactual.score, threshold=threshold,
+                # Se a entidade é dona do próprio processo (o mesmo processo
+                # cria as duas entidades em conflito), não há "outro processo"
+                # a apontar — fica vazio, em vez de dizer que P está em
+                # conflito consigo mesmo.
+                process=process, conflicting_process=(owner if owner != process else ""),
+                entity=entity, adjusted_score=counterfactual.score, threshold=threshold,
                 reasoning=reasoning,
             ))
 
     return conflicts
 
 
-def _pair_groups_to_clusters(df: pd.DataFrame, proc_groups: List[List[str]], ent_groups: List[List[str]]) -> List[Cluster]:
+def _effective_op_weight(df: pd.DataFrame, p: str, e: str, confirmed_overrides: Dict[str, Set[str]]) -> int:
+    """
+    Igual ao _op_weight, mas devolve 0 se esta entidade já foi confirmada
+    como isenta deste processo (ver confirmed_overrides). Serve só para
+    _assign_unclaimed_entities — sem isto, um grupo de entidades que o
+    _enforce_atomicity já separou com sucesso podia voltar a ser colado ao
+    cluster do processo de onde saiu, só porque este passo recalcula o
+    score do zero e não sabe que essa separação já tinha sido pedida de
+    propósito. (Já não é usado em _pair_groups_to_clusters — ver o
+    comentário lá para o porquê.)
+    """
+    if e in (confirmed_overrides or {}).get(p, set()):
+        return 0
+    return _op_weight(df.at[p, e])
+
+
+def _pair_groups_to_clusters(
+    df: pd.DataFrame,
+    proc_groups: List[List[str]],
+    ent_groups: List[List[str]],
+) -> List[Cluster]:
     """
     Junta cada grupo de processos ao grupo de entidades com que mais
-    interage (score = soma dos pesos CRUD). Se dois grupos de processos
-    calharem no mesmo grupo de entidades, ficam no mesmo cluster.
+    interage (score = soma dos pesos CRUD reais). Se dois grupos de
+    processos calharem no mesmo grupo de entidades, ficam no mesmo cluster.
+
+    Usa _op_weight (não _effective_op_weight) de propósito: um
+    confirmed_override tira uma entidade da união forçada da atomicidade,
+    mas não tira a posse — o processo continua a ser quem CRIA aquela
+    entidade. Zerar essa relação aqui fazia o processo "perder a casa"
+    certa (a entidade que ele cria) e ser encaixado onde só faz um UPDATE
+    mais fraco, só porque o score da entidade certa tinha sido zerado.
+    Encontrado ao vivo: "Purchase order creation and approvals" (cria
+    Purchase Order, atualiza Budget) devia ficar no cluster do Purchase
+    Order, mas com o score zerado acabava sempre no cluster do Budget. A
+    ligação a Budget não desaparece — passa a ser reportada como acesso
+    cross-cluster por _compute_process_span, não como posse aqui.
     """
     clusters: List[Cluster] = []
     for cid, pg in enumerate(proc_groups, start=1):
@@ -835,42 +939,61 @@ def _pair_groups_to_clusters(df: pd.DataFrame, proc_groups: List[List[str]], ent
     return clusters
 
 
-def _assign_unclaimed_entities(clusters: List[Cluster], ent_groups: List[List[str]], df: pd.DataFrame) -> List[Cluster]:
-    """Grupos de entidades que ainda não ficaram em nenhum cluster vão para o cluster com que mais se relacionam."""
+def _assign_unclaimed_entities(
+    clusters: List[Cluster],
+    ent_groups: List[List[str]],
+    df: pd.DataFrame,
+    confirmed_overrides: Dict[str, Set[str]] = None,
+) -> List[Cluster]:
+    """
+    Grupos de entidades que ainda não ficaram em nenhum cluster vão para o
+    cluster com que mais se relacionam — outra vez ignorando pares já
+    confirmados como isentos, para não desfazer uma separação que já foi
+    pedida. Se nenhum cluster existente tiver ligação real a este grupo
+    (porque a única ligação era precisamente a que acabou de ser isentada),
+    o grupo passa a ser o seu próprio cluster novo, em vez de desaparecer.
+    """
     claimed = {e for c in clusters for e in c.entities}
+    next_id = max((c.id for c in clusters), default=0) + 1
     for eg in ent_groups:
         if any(e not in claimed for e in eg):
-            best_c, best_score = clusters[0], -1
+            best_c, best_score = None, 0
             for c in clusters:
-                score = sum(_op_weight(df.at[p, e]) for p in c.processes for e in eg)
+                score = sum(_effective_op_weight(df, p, e, confirmed_overrides) for p in c.processes for e in eg)
                 if score > best_score:
                     best_score, best_c = score, c
-            if best_score > 0:
-                new_entities = [e for e in eg if e not in claimed]
+
+            new_entities = [e for e in eg if e not in claimed]
+            if best_c is not None:
                 best_c.entities.extend(new_entities)
                 best_c.name = _cluster_name(best_c.entities)
-                claimed.update(new_entities)
+            else:
+                clusters.append(Cluster(id=next_id, name=_cluster_name(new_entities), entities=new_entities))
+                next_id += 1
+            claimed.update(new_entities)
     return clusters
 
 
 def _extract_blocks(
     df: pd.DataFrame,
     density_threshold: float = 0.5,
-    ea_weights: Dict[tuple, float] = None,
+    process_weights: Dict[tuple, float] = None,
     process_types: Dict[str, str] = None,
     confirmed_overrides: Dict[str, Set[str]] = None,
+    entity_weights: Dict[tuple, float] = None,
 ) -> tuple[List[Cluster], List[Decision]]:
     """
     Orquestra o passo 4: agrupa processos, agrupa entidades, obriga os
     processos atómicos a ficarem juntos com o que escrevem, junta tudo em
     clusters, e por fim distribui os grupos de entidades que sobraram.
     """
-    ea_weights = ea_weights or {}
+    process_weights = process_weights or {}
+    entity_weights = entity_weights or {}
     process_types = process_types or {}
     entities = list(df.columns)
 
-    proc_groups = _group_processes(df, density_threshold, ea_weights)
-    ent_groups = _group_entities(df, density_threshold)
+    proc_groups = _group_processes(df, density_threshold, process_weights)
+    ent_groups = _group_entities(df, density_threshold, entity_weights)
 
     decisions: List[Decision] = []
     if process_types:
@@ -879,7 +1002,7 @@ def _extract_blocks(
         )
 
     clusters = _pair_groups_to_clusters(df, proc_groups, ent_groups)
-    clusters = _assign_unclaimed_entities(clusters, ent_groups, df)
+    clusters = _assign_unclaimed_entities(clusters, ent_groups, df, confirmed_overrides)
 
     return clusters, decisions
 
@@ -921,23 +1044,66 @@ def _absorb_pure_readers(clusters: List[Cluster], df: pd.DataFrame, process_type
                 c.processes.remove(proc)
                 best_cluster.processes.append(proc)
 
-    # Remove any now-empty clusters, then renumber so IDs stay contiguous 1..N —
-    # otherwise a dropped cluster leaves a gap (e.g. 1,2,3,5,6…) that every
-    # downstream LLM call and the UI would otherwise have to explain away.
-    survivors = [c for c in clusters if c.processes]
+    # Remove only clusters that are truly empty (no processes AND no
+    # entities), then renumber so IDs stay contiguous 1..N — otherwise a
+    # dropped cluster leaves a gap (e.g. 1,2,3,5,6…) that every downstream
+    # LLM call and the UI would otherwise have to explain away.
+    #
+    # `c.processes` alone used to be the filter, on the assumption that a
+    # process-less cluster only ever happens when every reader that used to
+    # live there got moved out above. But _assign_unclaimed_entities can
+    # also produce a process-less cluster on purpose — an entity that a
+    # confirmed override just pulled away from its own atomic process,
+    # which scores 0 against every existing cluster and gets a brand-new
+    # one with entities but no owning process. Filtering on `c.processes`
+    # alone silently deleted that cluster (and its entity) here — found
+    # live, an entity vanished from the final output after a confirmed
+    # split, instead of ending up in its own single-entity system.
+    survivors = [c for c in clusters if c.processes or c.entities]
     for new_id, c in enumerate(survivors, start=1):
         c.id = new_id
     return survivors
 
-def _compute_e2e_span(df: pd.DataFrame, clusters: List[Cluster], process_types: Dict[str, str]) -> Dict[str, List[int]]:
-    """For each E2E process, return the list of cluster IDs whose entities it touches."""
+def _compute_process_span(
+    df: pd.DataFrame,
+    clusters: List[Cluster],
+    process_types: Dict[str, str],
+    confirmed_overrides: Dict[str, Set[str]] = None,
+) -> Dict[str, List[int]]:
+    """
+    Para cada processo que legitimamente precisa de acesso a mais do que um
+    cluster, devolve a lista de IDs de cluster que ele toca — só conta
+    ESCRITAS (C/U/D), não leituras. Só para relatório — nunca muda
+    process_types nem entra no cálculo do CPSMF.
+
+    Antes disto só cobria processos end_to_end (era _compute_e2e_span).
+    Generalizado para também cobrir o caso encontrado ao vivo: um processo
+    atómico cria a entidade A e atualiza a entidade B; o arquiteto confirma
+    que A e B devem ficar em clusters diferentes (confirmed_overrides);
+    _pair_groups_to_clusters dá a esse processo o cluster que ele CRIA (A),
+    mas ele continua a precisar de aceder ao cluster onde só faz UPDATE
+    (B) — é a mesma dependência cross-system que já existia para
+    end_to_end, só que chega lá por uma decisão confirmada, não por uma
+    classificação.
+
+    Só escritas contam de propósito: quase todos os processos LEEM coisas
+    de fora do seu próprio cluster (dados de referência, catálogos) — isso
+    é normal e não é um "span" digno de destaque. Contar leituras tornava
+    isto ruidoso (quase tudo parecia espalhado por todo o lado); só uma
+    escrita fora do cluster próprio representa mesmo uma responsabilidade
+    cross-system. Mesmo threshold que _enforce_atomicity já usa para
+    decidir o que um processo "escreve" (_op_weight > R).
+    """
+    confirmed_overrides = confirmed_overrides or {}
     span: Dict[str, List[int]] = {}
     for proc in df.index:
-        if process_types.get(proc) != "end_to_end":
+        is_e2e = process_types.get(proc) == "end_to_end"
+        has_confirmed_split = bool(confirmed_overrides.get(proc))
+        if not is_e2e and not has_confirmed_split:
             continue
         touched_ids = [
             c.id for c in clusters
-            if any(_op_weight(df.at[proc, e]) > 0 for e in c.entities if e in df.columns)
+            if any(_op_weight(df.at[proc, e]) > _OP_PRIORITY["R"] for e in c.entities if e in df.columns)
         ]
         span[proc] = touched_ids
     return span
@@ -1139,13 +1305,15 @@ def classify_changes(
 def run_bsp(
     matrix_data: Dict[str, Dict[str, str]],
     density_threshold: float = 0.5,
-    ea_weights: Dict[tuple, float] = None,
+    process_weights: Dict[tuple, float] = None,
     process_types: Dict[str, str] = None,
     confirmed_overrides: Dict[str, Set[str]] = None,
-    ea_reasoning: Dict[tuple, str] = None,
+    process_reasoning: Dict[tuple, str] = None,
     adaptive_threshold: bool = False,
     adaptive_k: float = 1.0,
     adaptive_min_pairs: int = 5,
+    entity_weights: Dict[tuple, float] = None,
+    entity_reasoning: Dict[tuple, str] = None,
 ) -> BSPResult:
     """
     Run the full 4-step BSP algorithm.
@@ -1157,16 +1325,25 @@ def run_bsp(
     confirmed_overrides : { process_name: {entity_name, ...} }
         Entities the architect has explicitly confirmed can leave an
         atomic process's forced cluster, for this run only.
-    ea_reasoning : { (process_a, process_b): reasoning }
-        The LLM's justification text per ea_weights pair (same keys). Only
+    process_reasoning : { (process_a, process_b): reasoning }
+        The LLM's justification text per process_weights pair (same keys). Only
         used to explain a PendingConflict — never affects clustering.
+    entity_weights : { (entity_a, entity_b): bias in [-0.5, 0.5] }
+        Architect bias on a pair of ENTITIES rather than processes — feeds
+        _group_entities directly, and the _detect_pending_conflicts
+        counterfactual. A process caught between two entities pulled apart
+        this way still can't have its atomicity silently broken; it only
+        ever surfaces as a PendingConflict, same as process_weights.
+    entity_reasoning : { (entity_a, entity_b): reasoning }
+        The LLM's justification text per entity_weights pair (same keys).
+        Only used to explain a PendingConflict — never affects clustering.
     adaptive_threshold : if True, replaces density_threshold with a value
         derived from this matrix's own similarity distribution instead of
         the fixed constant. Default False keeps today's exact behaviour.
 
     Returns
     -------
-    BSPResult with clusters, reordered_matrix, entity_owners, e2e_span,
+    BSPResult with clusters, reordered_matrix, entity_owners, process_span,
     hub_flags, pending_conflicts.
     """
     if not matrix_data:
@@ -1178,7 +1355,7 @@ def run_bsp(
 
     hub_flags = _detect_hubs(df)                                                     # 1. hub detection (reporting only)
     owners    = _compute_entity_owners(df)                                           # 2. entity ownership (reporting only)
-    reordered = _reorder_matrix(df, ea_weights=ea_weights)                           # 3. affinity reordering
+    reordered = _reorder_matrix(df, process_weights=process_weights)                 # 3. affinity reordering
 
     if adaptive_threshold:
         proc_scores = _pairwise_scores(
@@ -1191,16 +1368,18 @@ def run_bsp(
         threshold = density_threshold
 
     clusters, decisions = _extract_blocks(
-        reordered, density_threshold=threshold, ea_weights=ea_weights,
+        reordered, density_threshold=threshold, process_weights=process_weights,
         process_types=process_types, confirmed_overrides=confirmed_overrides,
+        entity_weights=entity_weights,
     )                                                                                  # 4. block extraction + constraints
     pending_conflicts = _detect_pending_conflicts(
-        reordered, decisions, owners, ea_weights, ea_reasoning, threshold,
+        reordered, decisions, owners, process_weights, process_reasoning, threshold,
+        entity_weights=entity_weights, entity_reasoning=entity_reasoning,
     )                                                                                  # 5. atomicity-vs-constraint conflicts
     final    = _absorb_pure_readers(clusters=clusters, df=df,
                                      process_types=process_types)                     # 6. pure-reader cleanup
-    e2e_span  = _compute_e2e_span(df, final, process_types)
+    process_span = _compute_process_span(df, final, process_types, confirmed_overrides)
 
     return BSPResult(clusters=final, reordered_matrix=reordered,
-                     entity_owners=owners, e2e_span=e2e_span,
+                     entity_owners=owners, process_span=process_span,
                      hub_flags=hub_flags, pending_conflicts=pending_conflicts)

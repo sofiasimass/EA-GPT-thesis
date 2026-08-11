@@ -12,9 +12,33 @@ CURRENT DRAFT CLUSTERS:
 EXACT PROCESS NAMES — copy verbatim into first_process / second_process:
 {exact_names_list}
 
+EXACT ENTITY NAMES — copy verbatim into first_entity / second_entity:
+{exact_entity_names_list}
+
+YOUR OUTPUT HAS TWO SEPARATE LISTS — process_biases (pairs of PROCESSES) and
+entity_biases (pairs of ENTITIES). Most constraints only need process_biases;
+that is the normal case, and is enough whenever the two sides of a constraint
+map cleanly onto disjoint sets of processes. Only add an entity_bias for a
+pair when a process-level weight CANNOT capture what the constraint needs —
+specifically:
+  - The SAME process creates or touches entities on both sides of a
+    separation/isolation constraint (e.g. one atomic process writes both
+    "Order" and "Shipment Log", but the constraint says those two must end
+    up in separate systems). There is no second process to hold a weight
+    against in that case — the weight has to sit directly on the two entities.
+  - An entity is a "hub" touched by many otherwise-unrelated processes
+    (visible in CURRENT DRAFT CLUSTERS as an entity that keeps showing up
+    across very different-looking clusters). Pulling it apart from another
+    entity directly is more precise than trying to weight every process that
+    happens to touch it.
+When a constraint clearly names domains that map onto specific entities (not
+just processes), emit BOTH the process_biases AND the matching entity_biases
+for it — they are additive, not exclusive, so covering a constraint from
+both axes at once is safe and often more robust than choosing only one.
+
 INSTRUCTIONS:
 
-STEP 1 — Parse USER CONSTRAINTS first. There are two types — handle both:
+STEP 1 — Parse USER CONSTRAINTS first. There are four types — handle all four:
 
 TYPE A — Application/system constraints (e.g. "AppX manages both suppliers and stock"):
     a) Identify every process from EXACT PROCESS NAMES that belongs to each domain named.
@@ -39,12 +63,91 @@ Example TYPE B: if the user says "order creation and payment processing must be 
     - Assign high weights (+0.4 to +0.5) to ALL pairs: (Kitchen Production, Financial Management),
     (Dine-In Service, Financial Management), (Premium Take-away, Financial Management).
 
+TYPE C — Separation constraints (e.g. "X and Y should be handled by separate systems", "X must not
+share a system with Y", "X and Y should be isolated from each other"):
+    a) Identify the two domains named — the ones that must be kept apart.
+    b) From EXACT PROCESS NAMES, list ALL processes that belong to or touch each side of the
+        separation — not just the obvious one, every process connected to either domain.
+    c) For every pair where one process belongs to side X and the other belongs to side Y,
+        assign a strong NEGATIVE weight (-0.4 to -0.5). These pairs are the most critical to pull apart.
+        Reserve -0.5 only for pairs most directly responsible for the cross-domain interaction.
+    d) Do NOT skip cross-cluster pairs — those are exactly the ones the constraint is meant to fix.
+    e) Do NOT assign a positive weight to a pair a separation constraint targets, even if your own
+        reasoning text describes wanting to "reduce" or "minimize" their interaction — that intent
+        means the weight must be NEGATIVE, not a smaller positive number.
+    f) ENTITY AXIS — from EXACT ENTITY NAMES, also list which named entities belong to each side
+        (an entity "belongs" to the side of whichever process creates it; check CURRENT DRAFT
+        CLUSTERS for which entities currently sit alongside which processes). For every
+        cross-side entity pair, ALSO assign a strong NEGATIVE entity_bias (-0.4 to -0.5), same
+        as (c). This matters most when a single process from step (b) creates entities that fall
+        on BOTH sides — a process-level weight cannot separate those, only an entity_bias can.
+
+Example TYPE C: if the user says "orders and inventory records should be handled by separate systems":
+    - Order-side processes: [Order Taking, Online Order Intake]
+    - Inventory-side processes: [Stocking and Storage Allocation, Stock Counts and Reconciliation]
+    - Assign strong negative weights (-0.4 to -0.5) to ALL pairs: (Order Taking, Stocking and Storage
+    Allocation), (Order Taking, Stock Counts and Reconciliation), (Online Order Intake, Stocking and
+    Storage Allocation), (Online Order Intake, Stock Counts and Reconciliation).
+    - Order-side entities: [Order, Order Line] — Inventory-side entities: [Stock Level, Stock Count]
+    - ALSO assign strong negative entity_biases to ALL cross-side entity pairs: (Order, Stock Level),
+    (Order, Stock Count), (Order Line, Stock Level), (Order Line, Stock Count).
+
+TYPE D — Isolation constraints (e.g. "X should be in its own separate system", "X should be
+isolated", "X must stand alone", "X should not share a system with anything else") — only ONE
+side is named. Unlike TYPE C, there is no second domain to identify — the constraint means
+"apart from everything else":
+    a) Identify the process(es) named for isolation (side X).
+    b) From EXACT PROCESS NAMES, list EVERY OTHER process — this is the implicit "everything else"
+        side. Do not leave any out just because they seem unrelated by name or domain; isolation
+        means apart from ALL of them, not just the obviously related ones. A process can end up
+        structurally connected to something that looks completely unrelated by name (e.g. through
+        a shared data record neither process's name suggests) — that hidden connection is exactly
+        what this weight needs to break, so it must not be skipped.
+    c) For every pair (isolated process, other process), assign a strong NEGATIVE weight (-0.4 to -0.5).
+    d) This can mean many pairs for a single isolation constraint — that is expected, not a sign
+        you should narrow the scope. Do not stop early or cover only a convenient subset; an
+        isolated process must be pulled apart from EVERY other process in EXACT PROCESS NAMES.
+    e) ENTITY AXIS — from EXACT ENTITY NAMES, identify the entities the isolated process(es) create
+        or touch (side X's entities), then treat EVERY OTHER entity in EXACT ENTITY NAMES as the
+        implicit "everything else" side, exactly like (b) but for entities. Assign a strong
+        NEGATIVE entity_bias (-0.4 to -0.5) to every (isolated entity, other entity) pair. This is
+        the only way to isolate an entity that the isolated process shares with a process outside
+        its own group — a process-level weight alone cannot reach that entity if no process on
+        "its side" is the one creating it.
+
+Example TYPE D: if the user says "Waitlist, seating plan, pacing controls should be in a separate
+isolated system", and EXACT PROCESS NAMES also contains [Order Taking, Kitchen Preparation,
+Financial Management, Purchase Order Creation, ...every other process in the list]:
+    - Isolated process: [Waitlist, seating plan, pacing controls]
+    - Everything else: every single other name in EXACT PROCESS NAMES, with no exceptions
+    - Assign strong negative weights (-0.4 to -0.5) to ALL pairs: (Waitlist, seating plan, pacing
+    controls, Order Taking), (Waitlist, seating plan, pacing controls, Kitchen Preparation),
+    (Waitlist, seating plan, pacing controls, Financial Management), (Waitlist, seating plan,
+    pacing controls, Purchase Order Creation), and so on for every remaining process — including
+    ones with no obvious name-level connection to waitlists or seating.
+    - Isolated entities (created by that process): [Waitlist Entry]
+    - Everything else: every other name in EXACT ENTITY NAMES
+    - ALSO assign strong negative entity_biases to ALL pairs: (Waitlist Entry, Order),
+    (Waitlist Entry, Stock Level), (Waitlist Entry, Financial Transaction), and so on for every
+    remaining entity.
+
 STEP 2 — Apply EA PRINCIPLES to pairs not covered by STEP 1.
     - Processes clustered together that violate principles → NEGATIVE weight (down to -0.5).
     - Processes split across clusters that should share a domain → POSITIVE weight (up to +0.5).
     - Use the full range: strong violations → closer to -0.5; mild misfits → closer to 0.
+    - If a principle is fundamentally about DATA ownership (e.g. "every entity should have a
+        single source of truth", "avoid duplicate data across systems") rather than process
+        placement, express it as an entity_bias instead of (or in addition to) a process_bias —
+        the entity axis is the more direct fit for a data-ownership principle.
 
 RULES:
 - User constraint pairs ALWAYS take precedence over EA principle pairs.
 - Use the full weight range — do not default everything to +0.5.
+- Constraint language decides the sign, always: words like "separate", "apart", "isolated",
+  "must not share", "independent systems" mean a NEGATIVE weight. Words like "together", "same
+  service", "co-located", "integrated" mean a POSITIVE weight. The number's sign must always match
+  what your own reasoning text says — never assign a positive weight to a pair you are describing
+  as needing to be pulled apart, or a negative weight to a pair you are describing as needing to
+  be brought together. This applies identically to entity_biases.
 - first_process and second_process MUST be copied EXACTLY from EXACT PROCESS NAMES — no paraphrasing.
+- first_entity and second_entity MUST be copied EXACTLY from EXACT ENTITY NAMES — no paraphrasing.

@@ -77,21 +77,33 @@ Every entity you define must appear in at least one operation. If you cannot fin
  DENSITY REQUIREMENT :
 Every process MUST have 4–6 CRUD entries. To find them all, ask:
   - What does this process CREATE or initiate?
+  - Does this SAME process later UPDATE or DELETE what it just created, as a later stage of
+    its own lifecycle? A process name with two steps joined by "and" (e.g. "creation AND
+    approvals", "logging AND spoilage management") is a strong signal: the second step is
+    usually an UPDATE to the same entity the first step CREATED, not a separate entity.
+    Do not assume a process only ever touches its own entity once.
   - What master/reference data must it READ to function? (catalogues, price lists, profiles)
   - What approval or status data must it READ before it can proceed?
   - What existing records does it UPDATE as a side effect?
   - What records does it READ to produce its output? (reports, scorecards, audit trails)
 
 Example — "Purchase order creation and approvals":
-  C → Purchase Order
+  C → Purchase Order     (the "creation" half of the process)
+  U → Purchase Order     (the "approvals" half — approval is a status update to the SAME order)
   R → Supplier Profile   (must look up the supplier)
-  R → Product Catalogue  (must look up items and prices)
-  U → Budget             (spend is committed)
+  R → Budget             (must check available budget before approving)
 
 Before finalising, count operations per process.
 Any process with fewer than 4 entries is incomplete — add READ entries for reference data
 (catalogues, price lists, status records, approval logs, scorecards).
 Any process with more than 6 entries is too broad — drop the weakest READs.
+
+Also check the reverse direction, per entity: every entity MUST be CREATED (C) by at least
+one process somewhere in the matrix. An entity with only R/U/D operations and no C anywhere
+has no origin in this process landscape — either the entity is wrong (merge it into whatever
+DOES create equivalent data), or you are missing the process that actually produces it. Go
+back and add that C operation to whichever listed process most plausibly originates the data,
+even if the source text didn't say so explicitly.
 
 - If the text doesn't describe outputs explicitly, INFER them from business logic.
   A validation process produces a validation record (C or U).
