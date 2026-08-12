@@ -147,7 +147,290 @@ you check out or reference the exact code state for any version later (useful fo
 a thesis chapter at "the version evaluated in Section 4.2"); the Changelog is the
 human-readable summary of what changed and why.
 
+## Open questions for advisors
+
+- **Should two entities ever be allowed to merge into one cluster purely from structural
+  CRUD-matrix similarity (weighted Jaccard) when every process involved is `end_to_end`, or
+  should a merge in that case always require an explicit architect `entity_weight`?**
+  Context: in an all-`end_to_end` run, `Feedback Record` and `Customer Profile` merged into
+  one cluster in the initial (no-constraint) BSP pass because they're touched by the exact
+  same 5 processes everywhere (weighted Jaccard 0.636, threshold 0.5) — a strong, genuine
+  data signal, not noise. This doesn't contradict the "end_to_end tends toward ~1 cluster
+  per entity" rule of thumb (confirmed against a textbook matrix), since that's a tendency
+  for *diffuse* end_to_end footprints, not a guarantee against a pair with perfect process
+  overlap. Current behavior: kept as-is (data-driven default, architect can always override
+  with an explicit `entity_weight`, which works correctly). Worth confirming with the
+  thesis advisors which behavior is actually intended before treating this as settled.
+
 ## Changelog
+
+### v0.4.24 — 2026-08-12
+**Fixed**
+- **`_greedy_reorder` (matrix row/column reordering) was non-deterministic
+  across separate app runs.** Found live: re-testing the redesign's join
+  constraint ("Menu and Inventory must be tightly integrated") sometimes
+  worked and sometimes silently didn't, with identical matrix and weights.
+  Root cause: `remaining = set(items) - {seed}`, and `max(remaining, ...)`
+  breaks ties by iteration order — a Python `set` of strings iterates in
+  an order that depends on per-process hash randomization, so the same
+  matrix could reorder its columns differently every time the server
+  restarted. Fixed by using a list instead of a set, so ties are always
+  broken by original item order. Regression-tested
+  (`tests/test_reordering.py`).
+- **`_average_linkage_group` only ever compared a new item to the most
+  recently opened group, never to earlier ones.** Even after the fix
+  above made column order reproducible, the same real case (`Menu` /
+  `Inventory Record`, joined by a `+0.5 entity_weight`) still failed to
+  merge whenever an unrelated entity (`Supplier Profile`) landed between
+  them in column order — `Inventory Record` was only ever compared to
+  `Supplier Profile`'s group, never to `Menu`'s. Fixed by comparing each
+  new item against every group formed so far and joining whichever has
+  the best average (if it clears the threshold), instead of only the
+  last group. The anti-chaining protection (comparing against a group's
+  full average, not a single neighbour) is unchanged — only which groups
+  get considered as candidates changed. Regression-tested
+  (`test_entity_weights_still_merges_when_an_unrelated_entity_sits_between_them`).
+  36/36 tests pass.
+
+### v0.4.23 — 2026-08-12
+**Changed**
+- **Redesigned `bsp.py`'s cluster-assembly stage — a cluster is now defined
+  directly by its entity group, and a process is a member of every cluster
+  it genuinely writes to, with no competition involved.** Motivated by a
+  known, twice-reproduced residual bug: `_pair_groups_to_clusters`'s
+  CRUD-score tie-break (deciding which entity group a process group
+  "wins") was blind to `process_weights`, and `_absorb_pure_readers`
+  couldn't correct a bad placement when none of a reader's entities had a
+  known creator. Removing the competition removes the tie-break itself,
+  not just one axis's blind spot in it — confirmed against both known
+  cases (`Financial Management`/`Supplier and Procurement Management`
+  sharing a cluster; `Greeting/seating`/`Waitlist`/`Loyalty` gluing
+  together), and against a fully end-to-end scenario shared by the thesis
+  advisors, where the expected classical-BSP result is close to one
+  cluster per entity.
+  - Removed: `_pair_groups_to_clusters`, `_assign_unclaimed_entities`,
+    `_effective_op_weight` (only existed to stop the competition from
+    undoing an already-confirmed split — nothing left to undo), and
+    `_group_processes` (only fed the now-removed competition).
+  - Added: `_assign_process_membership` — builds one `Cluster` per entity
+    group, then gives each process membership in every cluster it writes
+    (C/U/D) to. Needs no atomic/end_to_end special-casing: `_enforce_atomicity`
+    already guarantees an unexempted atomic process's writes land in a
+    single entity group before this step even runs.
+  - Renamed and rewritten: `_absorb_pure_readers` → `_place_pure_readers`.
+    No longer *moves* a reader a competing step had already (possibly
+    wrongly) seeded somewhere — there's no such step left. Instead it
+    *places* a still-homeless reader into whichever cluster creates most
+    of what it reads, and — new — leaves it unplaced on a genuine tie
+    instead of guessing. `process_type` no longer matters here.
+  - `_extract_blocks` renamed `_build_clusters`; no longer takes
+    `process_weights` (had no remaining use once assembly stopped being a
+    contest). `run_bsp`'s own signature and `BSPResult`'s fields are
+    unchanged — `app.py` needed zero changes.
+  - `process_weights`' role narrows to the visual matrix reordering and to
+    `_detect_pending_conflicts`; `entity_weights` is now the axis with
+    direct influence on cluster shape.
+- **Bug found and fixed while verifying the redesign**: the owner lookup
+  inside `_place_pure_readers` scanned every column of the matrix for each
+  cluster's processes, instead of just that cluster's own entities. Once a
+  single process could legitimately belong to several clusters (the whole
+  point of this redesign), a process that creates entities in two
+  different clusters could overwrite the correct owner of an entity in one
+  cluster with the wrong cluster's index — found live via a reproduction
+  script (a `CRUD` process spanning 3 entity clusters corrupted the owner
+  map for 2 of them), not by inspection. Fixed by checking only `c.entities`
+  per cluster. Regression-tested (`test_owner_lookup_is_not_corrupted_by_a_writer_in_several_clusters`).
+
+**Tests**
+- `tests/test_pure_reader_absorption.py` rewritten (only intentional
+  exception to "all existing tests pass unmodified" for this change): its
+  3 cases tested *moving* an already-(possibly-wrongly-)seeded reader, a
+  scenario that can no longer occur. Rewritten to test *placement* instead,
+  same 3 underlying concerns (clear creator → placed there; genuine
+  ambiguity → left unplaced, replacing the old "end_to_end stays put"
+  case since process_type no longer matters here; a writer is untouched),
+  plus 1 new test for the owner-lookup bug above. 34/34 tests pass
+  (33 pre-existing/adapted + 1 new).
+
+### v0.4.22 — 2026-08-12
+**Added**
+- **16 new permanent regression tests, closing the top-priority gap from
+  `TODO_next_session.md`.** Everything fixed live this session
+  (`entity_weights`, the ownership fix, the `_assign_unclaimed_entities`
+  veto, `process_span`-as-membership) was only ever verified via live app
+  runs and one-off scratch scripts — real bugs, real fixes, but zero
+  permanent protection against regressing them later. Now committed as
+  `pytest`:
+  - `tests/test_entity_weights.py` — `_group_entities` splitting/joining
+    via `entity_weights`; `_detect_pending_conflicts` on a pure
+    entity-weight signal (the self-owned-pair case process_weights alone
+    can't represent), a pure process-weight signal, and both combined
+    additively.
+  - `tests/test_process_ownership.py` — ownership follows CREATE not
+    UPDATE after a confirmed override; an orphaned entity survives as its
+    own cluster instead of vanishing; `_assign_unclaimed_entities` vetoes
+    a negatively-weighted reattachment (the `Financial Transaction`/
+    `Supplier Profile` case).
+  - `tests/test_process_span.py` — reads never count toward span, only
+    writes; an `end_to_end` process becomes a genuine member of every
+    cluster it writes to (the `[P1]->[A]`, `[P1,P2]->[B]` shape); an
+    atomic process without a confirmed override never spans at all.
+  - `tests/test_validate_extraction.py` — density (sparse/dense),
+    entity-sharing, never-created, the dangling-reference-reported-once
+    fix, and zero-operations.
+  33/33 tests pass (17 pre-existing + 16 new).
+
+### v0.4.21 — 2026-08-12
+**Changed**
+- **`Generator.extract()` now retries up to 3 times, not just once, and
+  keeps the best attempt — not necessarily the last one.** Motivated by
+  live confirmation, three separate times in one session (an atomic-only,
+  an end_to_end-only, and a mixed-type run), that a single retry regularly
+  left real `_validate_extraction` issues unresolved. Deliberately still
+  bounded, not unbounded — nothing guarantees the model ever satisfies
+  every check simultaneously, so it stops after `max_attempts` (default 3)
+  and returns whichever attempt had the fewest remaining issues, tracked
+  across all attempts rather than just trusting the final one (a later
+  attempt can regress on something an earlier one got right).
+- **Return shape changed**: `extract()` now returns `(result,
+  remaining_issues)` instead of just `result`. `app.py`'s call site
+  updated accordingly, and `remaining_issues` is folded into the existing
+  `data_quality_warning` message/log key (`extraction_issues`) instead of
+  a new, separate channel — closing the visibility gap flagged earlier:
+  these issues used to only ever reach the server console, never the user.
+  `last_extraction_validation_debug.json` (v0.4.18) now logs every
+  attempt's issues, not just attempt 1 and the single retry.
+  17/17 tests pass (generator.py has no pytest coverage; verified by
+  compiling, importing `app.py` cleanly, and a full read-through of the
+  loop logic — not yet run against a live extraction).
+
+### v0.4.20 — 2026-08-12
+**Changed**
+- **`process_span` is no longer just metadata — it's now real cluster
+  membership.** Closes the "known residual" flagged in v0.4.19. Until now,
+  a process with a real write relationship outside its primary cluster was
+  recorded in `process_span` but never actually added to that other
+  cluster's `.processes` — so e.g. `Supplier Profile` ended up with
+  `"processes": []` even though `Supplier and Procurement Management
+  Process` genuinely creates it. `run_bsp` now walks `process_span` after
+  computing it and adds the process to every cluster it spans, not just
+  its primary one. This is the normal case for `end_to_end` processes
+  (confirmed by the user against the classical BSP shape:
+  `[P1] -> [Fornecedor]`, `[P1, P2] -> [Financeiro]`, same process P1 a
+  real member of both) and only happens for an `atomic` process via an
+  explicit `confirmed_override` — `_enforce_atomicity`'s hard rule is
+  unchanged, an atomic process still can't leave its one cluster on its
+  own. Verified both ways: the real end_to_end case from v0.4.19
+  (`Supplier and Procurement Management Process` now a genuine member of
+  both `Financial Transaction` and `Supplier Profile`), and a synthetic
+  atomic-with-confirmed-override case producing exactly the
+  `[P1]->[Fornecedor]` / `[P1,P2]->[Financeiro]` shape. 17/17 tests pass.
+
+### v0.4.19 — 2026-08-12
+**Fixed**
+- **`_assign_unclaimed_entities` ignored `entity_weights` entirely, and
+  could silently glue back together what a negative weight had just asked
+  to be kept apart.** Found live via a three-way test (all-atomic,
+  all-end_to_end, mixed process types): a user constraint separating
+  `Financial Transaction` and `Supplier Profile` (both `process_weights`
+  and `entity_weights` at `-0.5`, applied across two iterations) had no
+  effect at all. Root cause: `Supplier and Procurement Management Process`
+  creates both entities with identical raw priority, so
+  `_pair_groups_to_clusters` ties between their entity groups and
+  (arbitrarily, by iteration order) assigns the process to one — leaving
+  the other group "unclaimed." `_assign_unclaimed_entities` then re-scores
+  purely by raw CRUD weight to decide where the leftover group goes, with
+  no awareness `entity_weights` exists — so the loser gets reattached
+  right back to the winner's cluster, silently undoing the separation with
+  no error and no PendingConflict (that mechanism only covers atomic
+  processes via `_enforce_atomicity`; this path bypasses it entirely).
+  Candidate clusters are now vetoed outright — never chosen regardless of
+  CRUD score — if they'd introduce a negative `entity_weight` against an
+  entity already inside. Verified against the real reproduction:
+  `Financial Transaction` and `Supplier Profile` now land in separate
+  clusters, and `process_span` correctly shows
+  `Supplier and Procurement Management Process` accessing both — the same
+  "owns one cluster, reaches into another" shape as a textbook BSP
+  worked example the user provided. 17/17 tests pass.
+- **Known residual, not yet fixed**: the winning side of the tie
+  (`Supplier and Procurement Management Process` landing in the
+  `Financial Transaction` cluster) is still decided by
+  `_pair_groups_to_clusters`'s plain CRUD tie-break, which — like the bug
+  above, but not yet fixed — doesn't check `process_weights` either. In
+  this same real case, `Financial Management and Compliance Process` and
+  `Supplier and Procurement Management Process` end up as cluster-mates
+  despite a `-0.5` process_weight between them, and the new standalone
+  `Supplier Profile` cluster ends up with `processes: []` — correct in
+  that nothing is silently lost anymore, but not the cleaner shape the
+  textbook example shows (every cluster owned by a real process). Left
+  alone for now, scoped exactly to what was agreed; worth a follow-up
+  decision on whether `_pair_groups_to_clusters`'s own tie-break should
+  also become weight-aware.
+
+### v0.4.18 — 2026-08-12
+**Added**
+- **`Generator.extract()` now writes `src/last_extraction_validation_debug.json`**
+  — `_validate_extraction`'s findings across the extraction attempt(s)
+  (`attempt_1_issues`, whether a retry happened, `remaining_issues` after
+  the retry). Motivated directly by the live three-way test: the atomic
+  run had three simultaneous `never_created`/dangling-reference violations
+  that survived the retry, and the only trace of that was `print()`
+  statements to the server console — invisible to anything that only reads
+  files back afterward. Same directory and naming convention as the
+  existing `last_extraction_debug.json`. Console prints are unchanged,
+  kept for whoever's watching the terminal live. Verified the file writes
+  correctly on both the clean-pass and retried-with-remaining-issues
+  paths. 17/17 tests pass.
+
+### v0.4.17 — 2026-08-12
+**Fixed**
+- **Two small `_validate_extraction` bugs found in the same review pass**
+  as v0.4.16's prompt fixes:
+  - `touched_entities` and `op_entity_names` were word-for-word identical
+    set comprehensions over `operations`, computed twice under different
+    names — consolidated into one, used by both the orphan check and the
+    dangling-reference check.
+  - The "never created" check wasn't scoped to properly-defined entities,
+    so a hallucinated entity name referenced in an R/U/D operation (already
+    caught, correctly, by the dangling-reference check) got a second,
+    confusingly overlapping "needs a Create somewhere" issue for the same
+    underlying problem. Now scoped to `entity_names ∩ touched_entities`, so
+    a dangling reference is explained exactly once, by the check that
+    names it correctly.
+  - Verified both directions: a dangling/undefined entity reference is now
+    reported once, not twice; a properly-defined entity with no Create
+    (e.g. `Reservation`, the real case from v0.4.11) is still caught
+    correctly. 17/17 tests pass.
+
+### v0.4.16 — 2026-08-12
+**Changed**
+- **Three `prompt.txt` clarity/consistency fixes**, found during a review
+  pass of the prompt and `_validate_extraction` together:
+  - Merged the two "entity must connect to the matrix" rules, which used
+    to live in separate, non-adjacent sections (ENTITIES said "must appear
+    in an operation"; DENSITY REQUIREMENT separately said "must be
+    created") — now stated together in ENTITIES as one rule and its
+    refinement, instead of two disconnected callouts.
+  - DENSITY REQUIREMENT now opens with an explicit, general statement that
+    a single (process, entity) pair can carry more than one operation,
+    using a clean example with no dependency on a name-pattern heuristic
+    ("Manage Clients" → C, R, U, D all on "Client"). The existing
+    "Purchase order creation and approvals" example stays as a more
+    specific secondary case (the "two-step process name" signal).
+  - Added a guard note after the worked example: entity/process names
+    used in examples throughout the prompt (Purchase Order, Budget,
+    Manage Clients, etc.) are patterns to follow, not literal names to
+    copy — a hedge against the entity-naming-consistency question raised
+    earlier, on the chance the concrete example names were themselves
+    anchoring output.
+  - Deliberately left alone: the RULE 1/RULE 2 process-classification
+    keyword conflict found in the same review (RULE 1 lists "Management"
+    as an `end_to_end` signal, but RULE 2's own example, "Waste logging
+    and spoilage management," is atomic) — the user can always correct a
+    process_type in the review step, so this was judged lower priority
+    than the entity/density issues above.
+  - Verified: prompt still formats cleanly with no stray template braces,
+    17/17 tests pass (no code changes this round, prompt text only).
 
 ### v0.4.15 — 2026-08-11
 **Fixed**

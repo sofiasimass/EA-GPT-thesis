@@ -89,7 +89,7 @@ async def pipeline(session: Session):
             "loading": "matrix",
         })
 
-        result = await gen.extract(context=session.context, process_list=session.processes)
+        result, extraction_issues = await gen.extract(context=session.context, process_list=session.processes)
         data = result.model_dump()
 
         debug_path = Path(__file__).parent / "last_extraction_debug.json"
@@ -132,17 +132,20 @@ async def pipeline(session: Session):
                 for o in skipped_ops
             ],
             "processes_missing_from_matrix": processes_with_no_ops,
+            "extraction_issues": extraction_issues or [],
         }
-        if skipped_ops or processes_with_no_ops:
+        if skipped_ops or processes_with_no_ops or extraction_issues:
+            extra = f" {len(extraction_issues)} extraction issue(s) remained even after retries." if extraction_issues else ""
             await session.send({
                 "type": "data_quality_warning",
                 "message": (
                     f"{len(skipped_ops)} operation(s) were dropped (entity name mismatch) and "
                     f"{len(processes_with_no_ops)} process(es) have no valid operations and are "
-                    f"missing from the matrix below."
+                    f"missing from the matrix below.{extra}"
                 ),
                 "skipped_operations": data_quality_warnings["skipped_operations"],
                 "processes_missing_from_matrix": processes_with_no_ops,
+                "extraction_issues": data_quality_warnings["extraction_issues"],
             })
 
         df_raw = pd.DataFrame(mat.matrix).T.fillna("")

@@ -1,6 +1,8 @@
 import os
+import json
 import asyncio
 import logging
+from pathlib import Path
 from dotenv import load_dotenv
 from openai import OpenAI
 from langchain_openai import ChatOpenAI
@@ -55,11 +57,15 @@ def _validate_extraction(data: dict, process_list: List[str]) -> List[str]:
     # its Create operation. Same CRUD-matrix-anomaly literature already cited in bsp.py's hub
     # detection: Bureš, Cerny, Frajtak & Ahmed, "Testing the Consistency of Business Data
     # Objects Using Extended Static Testing of CRUD Matrices," Cluster Computing 22(S4), 2019.
+    #
+    # Scoped to entity_names (properly defined entities) so a hallucinated entity reference
+    # isn't flagged here too — that's the dangling-reference check's job, below, and doubling
+    # up would give confusing, overlapping guidance for what's really one problem.
     created_entities = {
         op["entity_name"] for op in data.get("operations", [])
         if "C" in str(op.get("operation", "")).upper()
     }
-    never_created = sorted(touched_entities - created_entities)
+    never_created = sorted((touched_entities & entity_names) - created_entities)
     if never_created:
         issues.append(
             f"{len(never_created)} entit(y/ies) are read/updated but never created by any "
@@ -71,8 +77,7 @@ def _validate_extraction(data: dict, process_list: List[str]) -> List[str]:
     if unknown_op_processes:
         issues.append(f"{len(unknown_op_processes)} operation(s) reference a process not in the output's process list: {sorted(unknown_op_processes)[:10]}")
 
-    op_entity_names = {op["entity_name"] for op in data.get("operations", [])}
-    unknown_op_entities = op_entity_names - entity_names
+    unknown_op_entities = touched_entities - entity_names
     if unknown_op_entities:
         issues.append(f"{len(unknown_op_entities)} operation(s) reference an entity not in the output's entity list: {sorted(unknown_op_entities)[:10]}")
 
@@ -116,6 +121,19 @@ def _validate_extraction(data: dict, process_list: List[str]) -> List[str]:
         )
 
     return issues
+
+
+def _write_validation_debug(debug_info: dict) -> None:
+    """
+    Dumps _validate_extraction's findings across the extraction attempt(s)
+    to a file, not just console prints — console output only reaches
+    whoever's watching the terminal live, and isn't something that can be
+    read back afterward (e.g. to debug a run from its log). Mirrors
+    app.py's last_extraction_debug.json, same directory, so both debug
+    files are found in the same place.
+    """
+    debug_path = Path(__file__).parent.parent / "last_extraction_validation_debug.json"
+    debug_path.write_text(json.dumps(debug_info, indent=2), encoding="utf-8")
 
 
 class Generator:
@@ -393,32 +411,34 @@ class Generator:
             "metrics_comparison": metrics_comparison,
         })
 
-    async def extract(self, context: str, process_list: list):
+    async def extract(self, context: str, process_list: list, max_attempts: int = 3):
+        """
+        Retries against _validate_extraction up to max_attempts times, not
+        just once — a single retry kept leaving real issues unresolved
+        (confirmed live, three separate times: an atomic-only, an
+        end_to_end-only, and a mixed-type run each had at least one
+        never_created/density/entity-sharing violation survive the one
+        retry that used to exist). Unbounded retrying isn't safe either —
+        nothing guarantees the model ever satisfies every check at once,
+        so this stops after max_attempts and keeps whichever attempt had
+        the FEWEST remaining issues, not necessarily the last one (a later
+        attempt can regress on something an earlier one got right).
+
+        Returns (result, remaining_issues) instead of just result, so
+        app.py can finally show the user what's still wrong instead of it
+        only ever reaching the server console.
+        """
         prompt_path = os.path.join(os.path.dirname(__file__), "..", "resources", "prompt.txt")
         with open(prompt_path, "r", encoding="utf-8") as f:
             base_instructions = f.read()
 
-        prompt = ChatPromptTemplate.from_template(
+        process_list_str = "\n".join(f"  - {p}" for p in process_list)
+
+        base_prompt = ChatPromptTemplate.from_template(
             base_instructions + "\n"
             "TEXT (may be empty — see \"WHEN NO CONTEXT IS PROVIDED\" above):\n{context}\n"
             "Extracted CRUD Matrix:"
         )
-
-        process_list_str = "\n".join(f"  - {p}" for p in process_list)
-        result = await (prompt | self.structured_output).ainvoke({
-            "process_list": process_list_str,
-            "context": context
-        })
-
-        issues = _validate_extraction(result.model_dump(), process_list)
-        if not issues:
-            return result
-
-        print("WARNING: extraction violated its own rules:")
-        for issue in issues:
-            print(f"  - {issue}")
-        print("  Retrying once with a stronger reminder...")
-
         retry_prompt = ChatPromptTemplate.from_template(
             base_instructions + "\n"
             "TEXT (may be empty — see \"WHEN NO CONTEXT IS PROVIDED\" above):\n{context}\n"
@@ -429,19 +449,48 @@ class Generator:
             "and that every operation's process_name/entity_name matches names you actually defined.\n"
             "Extracted CRUD Matrix:"
         )
-        issues_str = "\n".join(f"  - {issue}" for issue in issues)
-        retry_result = await (retry_prompt | self.structured_output).ainvoke({
-            "process_list": process_list_str,
-            "context": context,
-            "issues": issues_str,
-        })
 
-        remaining_issues = _validate_extraction(retry_result.model_dump(), process_list)
-        if remaining_issues:
-            print("WARNING: retry still has unresolved issues — proceeding anyway:")
-            for issue in remaining_issues:
+        best_result, best_issues = None, None
+        attempts_log = []
+        issues_str = ""
+
+        for attempt in range(1, max_attempts + 1):
+            if attempt == 1:
+                result = await (base_prompt | self.structured_output).ainvoke({
+                    "process_list": process_list_str,
+                    "context": context,
+                })
+            else:
+                result = await (retry_prompt | self.structured_output).ainvoke({
+                    "process_list": process_list_str,
+                    "context": context,
+                    "issues": issues_str,
+                })
+
+            issues = _validate_extraction(result.model_dump(), process_list)
+            attempts_log.append({"attempt": attempt, "issues": issues})
+
+            if best_issues is None or len(issues) < len(best_issues):
+                best_result, best_issues = result, issues
+
+            if not issues:
+                print(f"  Attempt {attempt}: all checks passed.")
+                break
+
+            print(f"WARNING: attempt {attempt} violated its own rules:")
+            for issue in issues:
                 print(f"  - {issue}")
-        else:
-            print("  Retry succeeded — all checks passed.")
 
-        return retry_result
+            if attempt < max_attempts:
+                print(f"  Retrying (attempt {attempt + 1} of {max_attempts})...")
+                issues_str = "\n".join(f"  - {issue}" for issue in issues)
+
+        if best_issues:
+            print(f"WARNING: still {len(best_issues)} issue(s) after {len(attempts_log)} "
+                  f"attempt(s) — proceeding with the best attempt found:")
+            for issue in best_issues:
+                print(f"  - {issue}")
+
+        _write_validation_debug({"attempts": attempts_log, "final_issues": best_issues})
+
+        return best_result, best_issues

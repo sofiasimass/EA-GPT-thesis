@@ -74,14 +74,27 @@ Fewer and broader = better clustering. When in doubt, merge.
 
 Every entity you define must appear in at least one operation. If you cannot find a natural CRUD operation for an entity, replace it with one that does interact with the listed processes.
 
+That operation must specifically include a CREATE (C) from at least one process — an entity
+with only R/U/D operations and no C anywhere has no origin in this process landscape. Either
+the entity is wrong (merge it into whatever DOES create equivalent data), or you are missing
+the process that actually produces it. Go back and add that C operation to whichever listed
+process most plausibly originates the data, even if the source text didn't say so explicitly.
+
  DENSITY REQUIREMENT :
-Every process MUST have 4–6 CRUD entries. To find them all, ask:
+A single (process, entity) pair can — and often should — have MORE THAN ONE operation. Output
+a SEPARATE operation entry for each one that genuinely applies; do not collapse a process's
+full relationship with an entity down to just one letter. A process that owns an entity's
+whole lifecycle performs C, R, U, and even D all on that SAME entity — e.g. "Manage Clients"
+would legitimately produce four entries, all against "Client": C, R, U, D.
+
+Every process MUST have 4-8 CRUD entries in total (counting every entry, including repeats on
+the same entity like the example above). To find them all, ask:
   - What does this process CREATE or initiate?
-  - Does this SAME process later UPDATE or DELETE what it just created, as a later stage of
-    its own lifecycle? A process name with two steps joined by "and" (e.g. "creation AND
-    approvals", "logging AND spoilage management") is a strong signal: the second step is
-    usually an UPDATE to the same entity the first step CREATED, not a separate entity.
-    Do not assume a process only ever touches its own entity once.
+  - Does this SAME process later READ, UPDATE, or DELETE what it just created, as a later
+    stage of its own lifecycle? A process name with two steps joined by "and" (e.g. "creation
+    AND approvals", "logging AND spoilage management") is a strong signal: the second step is
+    usually an operation on the SAME entity the first step CREATED, not a separate entity. Do
+    not assume a process only ever touches its own entity once.
   - What master/reference data must it READ to function? (catalogues, price lists, profiles)
   - What approval or status data must it READ before it can proceed?
   - What existing records does it UPDATE as a side effect?
@@ -93,17 +106,15 @@ Example — "Purchase order creation and approvals":
   R → Supplier Profile   (must look up the supplier)
   R → Budget             (must check available budget before approving)
 
+Note: entity and process names used in examples throughout this prompt (Purchase Order,
+Supplier Profile, Budget, Invoice, Manage Clients, Client, etc.) illustrate the PATTERN only.
+Never copy them into your output literally unless they genuinely match this specific business
+— always use the real names your own extraction has already defined.
+
 Before finalising, count operations per process.
 Any process with fewer than 4 entries is incomplete — add READ entries for reference data
 (catalogues, price lists, status records, approval logs, scorecards).
 Any process with more than 6 entries is too broad — drop the weakest READs.
-
-Also check the reverse direction, per entity: every entity MUST be CREATED (C) by at least
-one process somewhere in the matrix. An entity with only R/U/D operations and no C anywhere
-has no origin in this process landscape — either the entity is wrong (merge it into whatever
-DOES create equivalent data), or you are missing the process that actually produces it. Go
-back and add that C operation to whichever listed process most plausibly originates the data,
-even if the source text didn't say so explicitly.
 
 - If the text doesn't describe outputs explicitly, INFER them from business logic.
   A validation process produces a validation record (C or U).

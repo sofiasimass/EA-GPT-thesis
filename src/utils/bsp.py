@@ -15,21 +15,20 @@ processes that update those entities; identify clusters as simple as
 possible) — this is an adaptation, not a literal step-for-step port:
   - Classical step 1 (delete irrelevant/similar rows or columns) has no
     preprocessing equivalent here — the full matrix is always reordered
-    and clustered. The nearest relative is _absorb_pure_readers, which
-    runs *after* clustering and relocates stray processes into an
+    and clustered. The nearest relative is _place_pure_readers, which
+    runs *after* clustering and gives stray processes a home in an
     existing cluster rather than deleting anything up front.
   - Classical steps 2 and 3 (group processes that create the same
-    entities, then fold in processes that update them) are not two
-    sequential passes here. They're collapsed into one weighted-affinity
-    calculation (_affinity / _weighted_jaccard), where C/U/D/R
-    operations are compared via min(op_weight) — a create/update pair on
-    the same entity scores nearly as high as a create/create pair, so
-    creators and updaters gravitate together in a single pass.
+    entities, then fold in processes that update them) collapse into a
+    single rule: a cluster IS an entity group (_group_entities), and a
+    process is a member of every cluster it genuinely WRITES to
+    (_assign_process_membership) — no separate "who owns this cluster"
+    contest, a process can legitimately belong to more than one.
   - Classical step 4 (identify application clusters, kept as simple as
-    possible) maps to _extract_blocks (grouping adjacent processes/
-    entities above density_threshold) followed by _absorb_pure_readers
-    (folding stray read-only processes into an existing cluster instead
-    of leaving the result fragmented).
+    possible) maps to _build_clusters (turning weighted-Jaccard entity
+    groups into clusters, enforcing atomicity, then granting write-based
+    membership) followed by _place_pure_readers (giving read-only
+    processes a home instead of leaving them without one).
 
 Pipeline (see run_bsp):
   1. _compute_entity_owners — resolve which process "owns" each entity
@@ -37,20 +36,22 @@ Pipeline (see run_bsp):
      reporting (BSPResult.entity_owners); does not drive the clustering.
   2. _reorder_matrix — greedy nearest-neighbour reordering of rows/columns
      by affinity, maximising block-diagonal density.
-  3. _extract_blocks — group adjacent processes by weighted Jaccard
-     similarity, group entities likewise, then enforce constraints:
-       • Atomic processes: all entities they WRITE (C/U/D) must land in
-         the same cluster (ACID — writes cannot span two systems).
-         Entities they only READ may live in other clusters.
-       • E2E processes: their entities may be split across clusters; the
-         process itself is recorded as spanning those clusters,
-         representing cross-system integration dependencies. A confirmed
-         override (see below) creates the same kind of span for an
-         otherwise-atomic process: it keeps ownership of the cluster
-         holding what it CREATES, and the other cluster it still writes to
-         is recorded as an access, not a second ownership.
-  4. _absorb_pure_readers — relocate any non-E2E process with zero C/U/D
-     operations into whichever cluster owns most of what it reads.
+  3. _build_clusters — group entities by weighted Jaccard similarity, then:
+       • Atomic processes: _enforce_atomicity forces all entities they
+         WRITE (C/U/D) into the same entity group before clusters are
+         even formed (ACID — writes cannot span two systems). Entities
+         they only READ may live in other groups. A confirmed override
+         (see below) exempts one specific entity from this forced union.
+       • Every process (atomic or end_to_end alike, no special-casing)
+         becomes a member of every cluster it genuinely writes to — for
+         an unexempted atomic process that's always exactly one cluster,
+         by construction; for an end_to_end process, or an atomic one
+         with a confirmed override, it's naturally however many clusters
+         it writes into. This IS what used to be a separate concept
+         ("e2e span") — now it's just ordinary membership.
+  4. _place_pure_readers — give any process with zero C/U/D operations a
+     home in whichever cluster owns most of what it reads. A genuine tie
+     between candidate clusters is left unplaced rather than guessed.
 
 Since the restructure below, the pipeline also has optional, opt-in
 extras — none change default behaviour: hub detection (BSPResult.hub_flags,
@@ -63,11 +64,15 @@ before anything is applied. classify_changes() is exported for comparing
 two iterations' clusters, but isn't called from run_bsp itself.
 
 Two independent axes of architect bias exist: process_weights (a pair of
-PROCESSES, feeds _group_processes and reordering) and entity_weights (a
-pair of ENTITIES, feeds _group_entities directly). Neither can silently
-break an atomic process's forced write co-location — a conflict between
-either axis and atomicity only ever surfaces as a PendingConflict, never
-applied without confirmation.
+PROCESSES) and entity_weights (a pair of ENTITIES). Since clusters are
+now defined directly by entity groups, entity_weights is the axis with
+direct influence on cluster shape (feeds _group_entities). process_weights
+no longer has a hand in cluster assembly at all — its role narrows to the
+visual matrix reordering and to _detect_pending_conflicts (spotting when
+an architect's process-level preference fights the atomicity rule).
+Neither axis can silently break an atomic process's forced write
+co-location — a conflict between either axis and atomicity only ever
+surfaces as a PendingConflict, never applied without confirmation.
 
 process_type values (set by the LLM during extraction):
   "atomic"     — single indivisible transaction; cluster boundaries drawn tightly.
@@ -386,7 +391,7 @@ def _affinity(df: pd.DataFrame, a: str, b: str, axis: str, process_weights: Dict
       R(1) & R(1) → min=1  (both read-only — coincidence, not co-ownership)
 
     Result is normalised to [0,1] by dividing by the theoretical maximum (4 × item count),
-    so it stays in the same scale as the weighted Jaccard used in _extract_blocks.
+    so it stays in the same scale as the weighted Jaccard used in _build_clusters.
 
     process_weights (architect-supplied biases in [-0.5, 0.5]) are added directly on top,
     allowing targeted boosts or penalties without a global scaling constant.
@@ -431,7 +436,11 @@ def _greedy_reorder(items: List[str], affinity_fn) -> List[str]:
     seed   = max(totals, key=totals.get)
 
     ordered   = [seed]
-    remaining = set(items) - {seed}
+    # Lista, não set: a ordem de iteração de um set() de strings muda a
+    # cada execução do Python (hash aleatório), o que tornava o desempate
+    # do max() abaixo não-determinístico -- a mesma matriz podia reordenar
+    # as colunas de forma diferente em cada arranque da app.
+    remaining = [i for i in items if i != seed]
 
     while remaining:
         last = ordered[-1]
@@ -467,11 +476,13 @@ def _reorder_matrix(df: pd.DataFrame, process_weights: Dict[tuple, float] = None
 
 
 # ---- pipeline de clustering ----
-# A antiga _extract_blocks fazia tudo numa função só (agrupar processos,
-# agrupar entidades, aplicar a regra da atomicidade, e juntar tudo em
-# clusters). Agora cada passo é uma função com um nome e uma
-# responsabilidade — mais fácil de perceber, de testar, e de estender
-# (foi aqui que entrou o threshold adaptativo e a tabela de decisão).
+# A antiga _extract_blocks fazia tudo numa função só. Foi primeiro
+# dividida em passos nomeados (threshold adaptativo, tabela de decisão),
+# e depois simplificada outra vez: já não há um concurso entre grupos de
+# processos e grupos de entidades para decidir quem fica com quem — um
+# cluster é diretamente um grupo de entidades, e cada processo entra nos
+# clusters onde realmente escreve (ver _assign_process_membership e
+# _build_clusters, mais abaixo).
 
 def _weighted_jaccard(df: pd.DataFrame, a: str, b: str, axis: str) -> float:
     """
@@ -502,8 +513,8 @@ def _entity_similarity_with_bias(df: pd.DataFrame, entity_weights: Dict[tuple, f
     """
     Uma função de similaridade entre duas entidades que já soma o peso do
     arquiteto ao nível das entidades (entity_weights), quando existir para
-    aquele par — o mesmo princípio do bias em _affinity/_group_processes,
-    mas para o eixo das entidades, e já pronta a usar como
+    aquele par — o mesmo princípio do bias em _affinity/_group_entities,
+    mas já pronta a usar como
     DecisionContext.similarity_fn (que só aceita uma função, sem bias_fn
     à parte).
 
@@ -528,63 +539,60 @@ def _average_linkage_group(
     bias_fn: Callable[[str, str], float] = None,
 ) -> List[List[str]]:
     """
-    Junta itens em grupos, sempre a comparar com a média do grupo todo até
-    agora — não só com o último item que entrou. Isto evita o problema da
+    Junta itens em grupos, sempre a comparar com a média de um grupo
+    inteiro — não com um único membro. Isto evita o problema da
     "corrente": se A e B são parecidos, e B e C são parecidos, A e C podem
-    não ter nada a ver um com o outro. Comparar só com o último deixava
+    não ter nada a ver um com o outro. Comparar só com um item deixava
     isso passar; comparar com a média do grupo inteiro não deixa.
 
-    bias_fn é opcional — só é usado para agrupar processos (os pesos do
-    arquiteto), nunca para entidades.
+    Cada item novo é comparado com TODOS os grupos já formados (não só o
+    mais recente), e junta-se ao de melhor média, se passar o threshold.
+    Sem isto, dois itens com uma relação forte (ex: um entity_weight alto)
+    podiam nunca chegar a ser comparados um com o outro, só por haver um
+    terceiro item, sem relação nenhuma com nenhum dos dois, colocado entre
+    eles pela ordem da matriz — encontrado ao vivo com "Menu" e
+    "Inventory Record": ficavam sempre separados quando "Supplier Profile"
+    calhava no meio, mesmo com um peso que por si só bastava para os unir.
+
+    bias_fn é opcional — usado por _group_entities para deixar
+    entity_weights (os pesos do arquiteto) influenciar o resultado.
     """
     if not items:
         return []
 
     groups: List[List[str]] = [[items[0]]]
     for curr in items[1:]:
-        current_group = groups[-1]
-        similarities = []
-        for member in current_group:
-            score = similarity_fn(curr, member)
-            if bias_fn:
-                score += bias_fn(curr, member)
-            similarities.append(score)
+        best_group, best_avg = None, -1.0
+        for group in groups:
+            similarities = []
+            for member in group:
+                score = similarity_fn(curr, member)
+                if bias_fn:
+                    score += bias_fn(curr, member)
+                similarities.append(score)
+            avg = sum(similarities) / len(similarities)
+            if avg > best_avg:
+                best_avg, best_group = avg, group
 
-        avg_similarity = sum(similarities) / len(similarities)
-
-        if avg_similarity >= threshold:
-            groups[-1].append(curr)
+        if best_avg >= threshold:
+            best_group.append(curr)
         else:
             groups.append([curr])
 
     return groups
 
 
-def _group_processes(df: pd.DataFrame, threshold: float, process_weights: Dict[tuple, float] = None) -> List[List[str]]:
-    """Agrupa processos, com os pesos do arquiteto a poder influenciar o resultado."""
-    process_weights = process_weights or {}
-
-    def bias(a: str, b: str) -> float:
-        return process_weights.get(tuple(sorted([a, b])), 0)
-
-    return _average_linkage_group(
-        list(df.index),
-        lambda a, b: _weighted_jaccard(df, a, b, "row"),
-        threshold,
-        bias_fn=bias,
-    )
-
-
 def _group_entities(df: pd.DataFrame, threshold: float, entity_weights: Dict[tuple, float] = None) -> List[List[str]]:
     """
     Agrupa entidades, com pesos do arquiteto ao nível das entidades
-    (entity_weights) a poder influenciar o resultado — o mesmo princípio
-    do _group_processes, mas no eixo das entidades. Antes disto existir,
+    (entity_weights) a poder influenciar o resultado. Antes disto existir,
     o agrupamento de entidades usava só o sinal estrutural do Jaccard,
     porque o único peso que existia (process_weights) é sobre pares de
     processos e não faz sentido aqui. Agora uma restrição do tipo "estas
     duas entidades têm de ficar em sistemas separados" pode agir
-    diretamente neste passo, em vez de só ao nível dos processos.
+    diretamente neste passo — e, como um cluster nasce diretamente de um
+    grupo de entidades (ver _build_clusters), é este o passo com
+    influência direta na forma final dos clusters.
     """
     entity_weights = entity_weights or {}
 
@@ -880,119 +888,62 @@ def _detect_pending_conflicts(
     return conflicts
 
 
-def _effective_op_weight(df: pd.DataFrame, p: str, e: str, confirmed_overrides: Dict[str, Set[str]]) -> int:
+def _assign_process_membership(df: pd.DataFrame, ent_groups: List[List[str]]) -> List[Cluster]:
     """
-    Igual ao _op_weight, mas devolve 0 se esta entidade já foi confirmada
-    como isenta deste processo (ver confirmed_overrides). Serve só para
-    _assign_unclaimed_entities — sem isto, um grupo de entidades que o
-    _enforce_atomicity já separou com sucesso podia voltar a ser colado ao
-    cluster do processo de onde saiu, só porque este passo recalcula o
-    score do zero e não sabe que essa separação já tinha sido pedida de
-    propósito. (Já não é usado em _pair_groups_to_clusters — ver o
-    comentário lá para o porquê.)
+    Um cluster passa a ser exatamente um grupo de entidades — nasce
+    diretamente de ent_groups, sem nenhum concurso entre processos para o
+    "ganhar". A pergunta sobre cada processo é sempre a mesma, sem exceção
+    para atómico ou end_to_end: "este processo ESCREVE (C/U/D) nalguma
+    entidade deste cluster?" Se sim, é membro — e pode ser membro de
+    vários clusters ao mesmo tempo, sem que isso precise de tratamento à
+    parte (era isso que process_span + um loop a converter isso em
+    membership faziam antes; agora sai correto logo aqui).
+
+    Substitui _pair_groups_to_clusters + _assign_unclaimed_entities, que
+    competiam por um único "dono" e depois remendavam quem perdia — e era
+    exatamente esse desempate que ficava cego a process_weights. Sem
+    concurso, não há desempate para ficar cego a nada.
+
+    Não precisa de saber nada sobre atomicidade: _enforce_atomicity já
+    correu antes e já garante que um processo atómico sem override só
+    escreve entidades dentro de UM ent_group — só pode ganhar membership
+    num cluster. Com um confirmed_override, escreve em dois grupos e fica
+    membro dos dois, tal como um end_to_end.
     """
-    if e in (confirmed_overrides or {}).get(p, set()):
-        return 0
-    return _op_weight(df.at[p, e])
-
-
-def _pair_groups_to_clusters(
-    df: pd.DataFrame,
-    proc_groups: List[List[str]],
-    ent_groups: List[List[str]],
-) -> List[Cluster]:
-    """
-    Junta cada grupo de processos ao grupo de entidades com que mais
-    interage (score = soma dos pesos CRUD reais). Se dois grupos de
-    processos calharem no mesmo grupo de entidades, ficam no mesmo cluster.
-
-    Usa _op_weight (não _effective_op_weight) de propósito: um
-    confirmed_override tira uma entidade da união forçada da atomicidade,
-    mas não tira a posse — o processo continua a ser quem CRIA aquela
-    entidade. Zerar essa relação aqui fazia o processo "perder a casa"
-    certa (a entidade que ele cria) e ser encaixado onde só faz um UPDATE
-    mais fraco, só porque o score da entidade certa tinha sido zerado.
-    Encontrado ao vivo: "Purchase order creation and approvals" (cria
-    Purchase Order, atualiza Budget) devia ficar no cluster do Purchase
-    Order, mas com o score zerado acabava sempre no cluster do Budget. A
-    ligação a Budget não desaparece — passa a ser reportada como acesso
-    cross-cluster por _compute_process_span, não como posse aqui.
-    """
-    clusters: List[Cluster] = []
-    for cid, pg in enumerate(proc_groups, start=1):
-        best_eg, best_score = ent_groups[0], -1
-        for eg in ent_groups:
-            score = sum(_op_weight(df.at[p, e]) for p in pg for e in eg)
-            if score > best_score:
-                best_score, best_eg = score, eg
-
-        existing = next((c for c in clusters if set(c.entities) == set(best_eg)), None)
-        if existing:
-            existing.processes.extend(pg)
-        else:
-            clusters.append(Cluster(
-                id=cid,
-                name=_cluster_name(best_eg),
-                processes=list(pg),
-                entities=list(best_eg),
-            ))
+    clusters = [
+        Cluster(id=i, name=_cluster_name(eg), entities=list(eg))
+        for i, eg in enumerate(ent_groups, start=1)
+    ]
+    for proc in df.index:
+        for c in clusters:
+            writes_here = any(_op_weight(df.at[proc, e]) > _OP_PRIORITY["R"] for e in c.entities)
+            if writes_here:
+                c.processes.append(proc)
     return clusters
 
 
-def _assign_unclaimed_entities(
-    clusters: List[Cluster],
-    ent_groups: List[List[str]],
-    df: pd.DataFrame,
-    confirmed_overrides: Dict[str, Set[str]] = None,
-) -> List[Cluster]:
-    """
-    Grupos de entidades que ainda não ficaram em nenhum cluster vão para o
-    cluster com que mais se relacionam — outra vez ignorando pares já
-    confirmados como isentos, para não desfazer uma separação que já foi
-    pedida. Se nenhum cluster existente tiver ligação real a este grupo
-    (porque a única ligação era precisamente a que acabou de ser isentada),
-    o grupo passa a ser o seu próprio cluster novo, em vez de desaparecer.
-    """
-    claimed = {e for c in clusters for e in c.entities}
-    next_id = max((c.id for c in clusters), default=0) + 1
-    for eg in ent_groups:
-        if any(e not in claimed for e in eg):
-            best_c, best_score = None, 0
-            for c in clusters:
-                score = sum(_effective_op_weight(df, p, e, confirmed_overrides) for p in c.processes for e in eg)
-                if score > best_score:
-                    best_score, best_c = score, c
-
-            new_entities = [e for e in eg if e not in claimed]
-            if best_c is not None:
-                best_c.entities.extend(new_entities)
-                best_c.name = _cluster_name(best_c.entities)
-            else:
-                clusters.append(Cluster(id=next_id, name=_cluster_name(new_entities), entities=new_entities))
-                next_id += 1
-            claimed.update(new_entities)
-    return clusters
-
-
-def _extract_blocks(
+def _build_clusters(
     df: pd.DataFrame,
     density_threshold: float = 0.5,
-    process_weights: Dict[tuple, float] = None,
     process_types: Dict[str, str] = None,
     confirmed_overrides: Dict[str, Set[str]] = None,
     entity_weights: Dict[tuple, float] = None,
 ) -> tuple[List[Cluster], List[Decision]]:
     """
-    Orquestra o passo 4: agrupa processos, agrupa entidades, obriga os
-    processos atómicos a ficarem juntos com o que escrevem, junta tudo em
-    clusters, e por fim distribui os grupos de entidades que sobraram.
+    Orquestra a montagem: agrupa entidades, obriga os processos atómicos a
+    ficarem com o que escrevem, e só depois dá a cada processo a sua
+    membership real — cada um membro de todos os clusters onde escreve,
+    sem concurso nenhum entre processos.
+
+    Já não recebe process_weights: desde que a montagem deixou de ser um
+    concurso, esse peso não tem mais nenhum papel aqui — continua a
+    influenciar a reordenação visual da matriz e a deteção de conflitos
+    com a atomicidade, só que essas duas coisas não passam por aqui.
     """
-    process_weights = process_weights or {}
     entity_weights = entity_weights or {}
     process_types = process_types or {}
     entities = list(df.columns)
 
-    proc_groups = _group_processes(df, density_threshold, process_weights)
     ent_groups = _group_entities(df, density_threshold, entity_weights)
 
     decisions: List[Decision] = []
@@ -1001,68 +952,73 @@ def _extract_blocks(
             df, entities, ent_groups, process_types, confirmed_overrides, density_threshold,
         )
 
-    clusters = _pair_groups_to_clusters(df, proc_groups, ent_groups)
-    clusters = _assign_unclaimed_entities(clusters, ent_groups, df, confirmed_overrides)
+    clusters = _assign_process_membership(df, ent_groups)
+    clusters = _place_pure_readers(clusters, df)
 
     return clusters, decisions
 
 
-def _absorb_pure_readers(clusters: List[Cluster], df: pd.DataFrame, process_types: Dict[str, str] = None) -> List[Cluster]:
+def _place_pure_readers(clusters: List[Cluster], df: pd.DataFrame) -> List[Cluster]:
     """
-    Any atomic process with zero C/U operations is a pure consumer.
-    Move it into whichever cluster owns (C) the most entities it reads.
-    E2E processes are skipped — they legitimately read across cluster boundaries.
+    Um processo que nunca escreve (C/U/D) nada ainda não é membro de
+    nenhum cluster depois de _assign_process_membership — não há nenhuma
+    escrita que o coloque lá. Este passo dá-lhe casa: o cluster que CRIA
+    a maior parte do que ele lê.
+
+    Substitui _absorb_pure_readers, que MOVIA um leitor que uma etapa
+    concorrente anterior já tinha colocado (bem ou mal) nalgum cluster.
+    Essa etapa concorrente já não existe, por isso já não há nada
+    "colocado" para mover — só processos por colocar pela primeira vez.
+    Por essa mesma razão já não interessa se o processo é atómico ou
+    end_to_end: não há "lugar de origem" nenhum para um end_to_end ser
+    poupado de deixar, por isso a mesma regra serve para os dois.
+
+    Numa igualdade real entre dois ou mais clusters candidatos, o
+    processo fica sem cluster em vez de escolher um ao calhas — é mais
+    honesto reportar "isto não tem uma casa clara" do que colar a um
+    sítio arbitrário só para não aparecer vazio. É esta regra que evita
+    processos leitores ficarem colados uns aos outros só porque nenhuma
+    das entidades que leem tem sequer um criador conhecido.
+
+    Como cada cluster já nasce diretamente de um ent_group (ver
+    _assign_process_membership), nunca fica vazio nem precisa de ser
+    removido — não há renumeração nenhuma a fazer aqui.
     """
-    process_types = process_types or {}
-    owner_cluster = {}  # entity → cluster index
+    # entidade → índice do cluster que a cria. Percorre só as entidades DO
+    # PRÓPRIO cluster (c.entities), não todas as colunas da matriz — com a
+    # membership nova, um processo pode pertencer a vários clusters ao
+    # mesmo tempo (ex: cria E1, E2 e E3, cada uma no seu cluster). Procurar
+    # em todas as colunas fazia esse mesmo processo, ao ser encontrado no
+    # cluster errado, sobrescrever o dono certo de uma entidade que nem
+    # sequer pertence a esse cluster.
+    owner_cluster: Dict[str, int] = {}
     for i, c in enumerate(clusters):
         for proc in c.processes:
-            for ent in df.columns:
+            for ent in c.entities:
                 if _op_weight(df.at[proc, ent]) == _OP_PRIORITY["C"]:
                     owner_cluster[ent] = i
 
-    for c in clusters:
-        readers_to_move = []
-        for proc in c.processes:
-            if process_types.get(proc) == "end_to_end":
-                continue
-            ops = [df.at[proc, e] for e in df.columns if _op_weight(df.at[proc, e]) > 0]
-            is_pure_reader = all(str(op).upper() in ("R", "nan") for op in ops)
-            if is_pure_reader:
-                readers_to_move.append(proc)
+    placed = {p for c in clusters for p in c.processes}
+    for proc in df.index:
+        if proc in placed:
+            continue
+        read_ents = [e for e in df.columns if _op_weight(df.at[proc, e]) > 0]
+        if not read_ents:
+            continue  # processo sem operações nenhumas -- nada a colocar
 
-        for proc in readers_to_move:
-            read_ents = [e for e in df.columns if str(df.at[proc, e]).upper() == "R"]
-            best_cluster, best_score = c, 0
-            for ent in read_ents:
-                ci = owner_cluster.get(ent)
-                if ci is not None and ci != clusters.index(c):
-                    score = sum(1 for e in read_ents if owner_cluster.get(e) == ci)
-                    if score > best_score:
-                        best_score, best_cluster = score, clusters[ci]
-            if best_cluster is not c:
-                c.processes.remove(proc)
-                best_cluster.processes.append(proc)
+        scores: Dict[int, int] = defaultdict(int)
+        for e in read_ents:
+            ci = owner_cluster.get(e)
+            if ci is not None:
+                scores[ci] += 1
 
-    # Remove only clusters that are truly empty (no processes AND no
-    # entities), then renumber so IDs stay contiguous 1..N — otherwise a
-    # dropped cluster leaves a gap (e.g. 1,2,3,5,6…) that every downstream
-    # LLM call and the UI would otherwise have to explain away.
-    #
-    # `c.processes` alone used to be the filter, on the assumption that a
-    # process-less cluster only ever happens when every reader that used to
-    # live there got moved out above. But _assign_unclaimed_entities can
-    # also produce a process-less cluster on purpose — an entity that a
-    # confirmed override just pulled away from its own atomic process,
-    # which scores 0 against every existing cluster and gets a brand-new
-    # one with entities but no owning process. Filtering on `c.processes`
-    # alone silently deleted that cluster (and its entity) here — found
-    # live, an entity vanished from the final output after a confirmed
-    # split, instead of ending up in its own single-entity system.
-    survivors = [c for c in clusters if c.processes or c.entities]
-    for new_id, c in enumerate(survivors, start=1):
-        c.id = new_id
-    return survivors
+        if scores:
+            top_score = max(scores.values())
+            winners = [ci for ci, s in scores.items() if s == top_score]
+            if len(winners) == 1:
+                clusters[winners[0]].processes.append(proc)
+
+    return clusters
 
 def _compute_process_span(
     df: pd.DataFrame,
@@ -1077,14 +1033,20 @@ def _compute_process_span(
     process_types nem entra no cálculo do CPSMF.
 
     Antes disto só cobria processos end_to_end (era _compute_e2e_span).
-    Generalizado para também cobrir o caso encontrado ao vivo: um processo
-    atómico cria a entidade A e atualiza a entidade B; o arquiteto confirma
-    que A e B devem ficar em clusters diferentes (confirmed_overrides);
-    _pair_groups_to_clusters dá a esse processo o cluster que ele CRIA (A),
-    mas ele continua a precisar de aceder ao cluster onde só faz UPDATE
-    (B) — é a mesma dependência cross-system que já existia para
-    end_to_end, só que chega lá por uma decisão confirmada, não por uma
-    classificação.
+    Generalizado para também cobrir o caso de um processo atómico com um
+    confirmed_override: cria a entidade A e atualiza a entidade B, e o
+    arquiteto confirmou que A e B devem ficar em clusters diferentes — o
+    processo fica com membership real nos dois (_assign_process_membership
+    já trata isto sem caso especial), e esta função reporta esse acesso
+    como a mesma dependência cross-system que já existia para end_to_end,
+    só que chegada lá por uma decisão confirmada, não por uma classificação.
+
+    Nota: esta função não decide membership nenhuma — só relata o que
+    _assign_process_membership já decidiu (recalculando a partir da
+    matriz, não olhando para c.processes), filtrado aos processos cujo
+    cross-cluster faz sentido reportar (end_to_end, ou atómico com
+    override). Um atómico comum nunca aparece aqui, mesmo escrevendo num
+    único cluster — não é um "span" digno de nota.
 
     Só escritas contam de propósito: quase todos os processos LEEM coisas
     de fora do seu próprio cluster (dados de referência, catálogos) — isso
@@ -1367,19 +1329,21 @@ def run_bsp(
     else:
         threshold = density_threshold
 
-    clusters, decisions = _extract_blocks(
-        reordered, density_threshold=threshold, process_weights=process_weights,
+    clusters, decisions = _build_clusters(
+        reordered, density_threshold=threshold,
         process_types=process_types, confirmed_overrides=confirmed_overrides,
         entity_weights=entity_weights,
-    )                                                                                  # 4. block extraction + constraints
+    )                                                                                  # 4. montagem: entidades + atomicidade + membership
     pending_conflicts = _detect_pending_conflicts(
         reordered, decisions, owners, process_weights, process_reasoning, threshold,
         entity_weights=entity_weights, entity_reasoning=entity_reasoning,
     )                                                                                  # 5. atomicity-vs-constraint conflicts
-    final    = _absorb_pure_readers(clusters=clusters, df=df,
-                                     process_types=process_types)                     # 6. pure-reader cleanup
-    process_span = _compute_process_span(df, final, process_types, confirmed_overrides)
 
-    return BSPResult(clusters=final, reordered_matrix=reordered,
+    # process_span é só relatório: cada processo já é membro a sério de
+    # todos os clusters onde escreve, desde _assign_process_membership —
+    # não é preciso nenhum passo extra a converter isso em membership.
+    process_span = _compute_process_span(df, clusters, process_types, confirmed_overrides)
+
+    return BSPResult(clusters=clusters, reordered_matrix=reordered,
                      entity_owners=owners, process_span=process_span,
                      hub_flags=hub_flags, pending_conflicts=pending_conflicts)
