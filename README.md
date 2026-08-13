@@ -177,6 +177,34 @@ human-readable summary of what changed and why.
 
 ## Changelog
 
+### v0.4.27 — 2026-08-13
+**Investigated (documentation only — no behavior change)**
+- **Calibrated `adaptive_k` for `derive_threshold`/`adaptive_threshold`
+  against the 21 real matrices accumulated in
+  `src/resources/initial_matrices/` across this thesis's sessions.**
+  This was still-open item 3 from `TODO_next_session.md` — the adaptive
+  threshold mechanism was built (see earlier changelog entries) but never
+  tested against real data, and `k=1.0` was documented as "just a
+  starting point."
+  - Process-pair similarity in a typical extraction is extremely skewed:
+    ~87% of pairs share zero entities (jaccard 0). At `k=1.0`, `mean +
+    k·stdev` lands far below the fixed `0.5` threshold this thesis's
+    results were validated against, changing the resulting cluster count
+    in 17/21 real matrices — too permissive.
+  - Swept `k` from 0.5 to 3.0: `k≈2.0` matches the fixed-threshold
+    cluster count far more often (only 7/21 differ); `k=2.5`/`3.0`
+    plateau around 5/21 with no further improvement.
+  - `adaptive_min_pairs`'s fallback verified correct on a synthetic
+    3-process matrix (3 pairs, below the default minimum of 5) — falls
+    back to the fixed `0.5` threshold exactly, matching non-adaptive
+    behavior.
+  - **Decision**: documented this calibration in `derive_threshold`'s own
+    docstring. `adaptive_threshold` stays `False` by default in
+    `run_bsp`, and `app.py` still never enables it — this investigation
+    answers "what k would make sense" without changing any live
+    behavior, since actually enabling it would need its own round of
+    live verification first.
+
 ### v0.4.26 — 2026-08-13
 **Fixed**
 - **`compute_isa_metrics` (DIIEF, LCOISF) was blind to anything a pure

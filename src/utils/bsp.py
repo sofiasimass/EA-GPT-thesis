@@ -647,9 +647,20 @@ def derive_threshold(
     NOTA: o k=2 do artigo original é para outro tipo de problema (aceitar
     ou não um pequeno conjunto de candidatos face a um único parceiro
     ideal). Aqui o threshold é usado em muitas comparações seguidas
-    enquanto se percorre a matriz toda, por isso k=1.0 é só um ponto de
-    partida — precisa de ser testado e ajustado com matrizes reais antes
-    de confiar nele.
+    enquanto se percorre a matriz toda, por isso o k certo para este caso
+    tinha de ser calibrado à parte.
+
+    Testado contra as 21 matrizes reais acumuladas em
+    `src/resources/initial_matrices/`: a distribuição de similaridade
+    entre processos é extremamente enviesada (tipicamente ~87% dos pares
+    com jaccard 0 — a maioria dos processos não partilha entidade
+    nenhuma), por isso k=1.0 (o valor por omissão aqui) dá um threshold
+    muito mais permissivo do que o fixo 0.5 usado até agora — mudava a
+    contagem de clusters em 17 das 21 matrizes. k≈2.0 aproxima-se muito
+    mais do comportamento já validado (só 7/21 diferem); k=2.5/3.0 satura
+    por volta de 5/21, sem melhoria adicional. `adaptive_threshold`
+    continua False por omissão em run_bsp — isto é só a calibração do k,
+    não uma decisão de ligar isto na app.
     """
     if len(scores) < min_pairs:
         return fallback
