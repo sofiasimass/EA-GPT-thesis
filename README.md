@@ -162,7 +162,94 @@ human-readable summary of what changed and why.
   with an explicit `entity_weight`, which works correctly). Worth confirming with the
   thesis advisors which behavior is actually intended before treating this as settled.
 
+- **Should `compute_isa_metrics` attribute a multi-member process's write to *every* cluster
+  it belongs to, even for an entity that isn't actually in that cluster's own entity list?**
+  Context: confirmed live via a real atomicity-override test — `Online order intake and slot
+  assignment` becomes a genuine member of both the `Order` cluster (creates `Order`) and the
+  `Reservation` cluster (updates `Reservation`, exempted from atomicity). `NAIEF`/`RSF` then
+  count *both* `Order` and `Reservation` as written from clusters `{1, 2}` — even though
+  `Order` itself only belongs to cluster 1. This is a literal reading of "touched by
+  processes in only one cluster" (the touching process genuinely has a foot in both systems),
+  not obviously wrong, but it does mean a process's *unrelated* second membership can lower
+  another entity's score. Kept as-is for now (not a new issue — the same attribution logic
+  already existed before this session, just never observable until real multi-membership
+  existed). Worth confirming with the thesis advisors whether this is the intended reading.
+
 ## Changelog
+
+### v0.4.26 — 2026-08-13
+**Fixed**
+- **`compute_isa_metrics` (DIIEF, LCOISF) was blind to anything a pure
+  reader touched, because it only ever examined a process's row if that
+  process was a formal member of some cluster — and pure readers never
+  are (v0.4.25).** Confirmed live: a process reading two entities in
+  different clusters, with no other process linking them, scored a
+  perfect DIIEF 1.0 instead of reflecting the real cross-cluster access;
+  a process reading two entities in the same cluster, the only thing
+  connecting them, scored LCOISF 0.0 instead of 1.0. Fixed by populating
+  `ent_any_clusters`/`ent_cud_clusters` from every process's row directly
+  (not gated by cluster membership), attributing a process with no
+  cluster to a unique synthetic source per process instead of a cluster
+  id — it still counts as a distinct access point, just not one tied to
+  any system. `LCOISF`'s cohesion check now considers every process in
+  the matrix, not just a cluster's formal members, for the same reason.
+  `NAIEF` and `CPSMF` were already unaffected (write-only, and "does this
+  process's type clash with its cluster's" respectively — neither
+  question applies to a process with no cluster).
+  - Note: this makes DIIEF stricter than before in one specific way — an
+    unaffiliated reader touching two entities that happen to live in the
+    *same* cluster now also counts as an extra access source (since the
+    reader isn't formally "in" that cluster either). This is the most
+    literal reading of "touched by processes in only one cluster," but
+    it's a real interpretation choice, not a forced one — flagged for
+    awareness, not changed further without discussion.
+
+**Added**
+- **`BSPResult.unallocated_reads`**: for every process with no cluster
+  membership, which cluster(s) it reads from (by id). Pure reporting —
+  doesn't influence clustering or metrics logic itself, just makes
+  visible what was silently disappearing from `systems_analysis`,
+  `ea_compliance`, and the matrix view. Wired into every WebSocket
+  `clustering` message and into `log.json` (`initial_bsp`/`final_bsp`).
+  The frontend (`appendClustering` in `index.html`) now renders a small
+  note above the matrix listing these processes and what they access,
+  reusing the existing `.dq-warn-card` styling.
+  - Verified against the real 23-process atomic scenario: 6 processes
+    correctly listed with the specific clusters each reads from (e.g.
+    `Greeting/seating and experience setup` → `Reservation`,
+    `Customer Profile`). `DIIEF` for that scenario dropped from a
+    misleadingly high score to `0.429`, now honestly reflecting how much
+    cross-cluster read access actually exists.
+  - 37/37 tests pass (2 new: `test_pure_reader_with_no_cluster_still_lowers_diief`,
+    `test_pure_reader_with_no_cluster_still_raises_lcoisf`).
+
+### v0.4.25 — 2026-08-13
+**Changed**
+- **A pure reader (a process with zero C/U/D operations anywhere) is now
+  never a member of any cluster — not even when its reads are completely
+  unambiguous (a single, obvious owning cluster).** Previously
+  `_place_pure_readers` would place such a process into its one clear
+  best-matching cluster, only leaving it unallocated on a genuine tie
+  between candidates. Changed after checking against the classical BSP
+  textbook reference this thesis is built on: a process shown only
+  reading across data classes isn't drawn as belonging to any of the
+  resulting systems, regardless of whether that reading is ambiguous.
+  `_place_pure_readers` is removed outright — there's no placement step
+  left in the pipeline at all now, membership is granted purely by
+  `_assign_process_membership` and nothing tries to guess a home
+  afterward.
+  - Verified against the real 23-process atomic scenario from this
+    session: 17/23 processes end up with cluster membership (was 18/23
+    before this change) — `Reputation management` (previously placed
+    unambiguously in the `Marketing Campaign` cluster) now correctly
+    stays unallocated too.
+  - **This increases the practical impact of the still-open "unplaced
+    process visibility" item** (see `TODO_next_session.md`) — more
+    processes can now legitimately end up outside every cluster, with no
+    warning surfaced anywhere in the current UI/log.
+  - `tests/test_pure_reader_absorption.py` replaced by
+    `tests/test_pure_readers_unallocated.py` (3 tests, same count,
+    testing the new simpler contract). 35/35 tests pass.
 
 ### v0.4.24 — 2026-08-12
 **Fixed**

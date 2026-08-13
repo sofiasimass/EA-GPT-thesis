@@ -14,10 +14,9 @@ rows/cols; group processes that create the same entities; merge in
 processes that update those entities; identify clusters as simple as
 possible) — this is an adaptation, not a literal step-for-step port:
   - Classical step 1 (delete irrelevant/similar rows or columns) has no
-    preprocessing equivalent here — the full matrix is always reordered
-    and clustered. The nearest relative is _place_pure_readers, which
-    runs *after* clustering and gives stray processes a home in an
-    existing cluster rather than deleting anything up front.
+    equivalent here — the full matrix is always reordered and clustered.
+    A process with zero writes simply ends up a member of no cluster at
+    all (see below) instead of being deleted from the matrix up front.
   - Classical steps 2 and 3 (group processes that create the same
     entities, then fold in processes that update them) collapse into a
     single rule: a cluster IS an entity group (_group_entities), and a
@@ -25,10 +24,19 @@ possible) — this is an adaptation, not a literal step-for-step port:
     (_assign_process_membership) — no separate "who owns this cluster"
     contest, a process can legitimately belong to more than one.
   - Classical step 4 (identify application clusters, kept as simple as
-    possible) maps to _build_clusters (turning weighted-Jaccard entity
-    groups into clusters, enforcing atomicity, then granting write-based
-    membership) followed by _place_pure_readers (giving read-only
-    processes a home instead of leaving them without one).
+    possible) maps to _build_clusters: weighted-Jaccard entity groups
+    become clusters directly, atomicity is enforced, and write-based
+    membership is granted — nothing else touches cluster shape after.
+
+A process that never writes (C/U/D) anything — a pure reader — is never a
+member of any cluster, no matter how unambiguous its reads are (e.g. it
+only ever reads from a single, obvious cluster). Membership comes only
+from writing. This matches the classical BSP reference this thesis is
+built on: a process shown only reading across several data classes isn't
+drawn as belonging to any of the resulting systems. An earlier version of
+this pipeline tried to place an unambiguous pure reader into its one
+clear best-matching cluster (_place_pure_readers, removed) — dropped once
+the reference made clear that even that case should stay unallocated.
 
 Pipeline (see run_bsp):
   1. _compute_entity_owners — resolve which process "owns" each entity
@@ -48,10 +56,8 @@ Pipeline (see run_bsp):
          by construction; for an end_to_end process, or an atomic one
          with a confirmed override, it's naturally however many clusters
          it writes into. This IS what used to be a separate concept
-         ("e2e span") — now it's just ordinary membership.
-  4. _place_pure_readers — give any process with zero C/U/D operations a
-     home in whichever cluster owns most of what it reads. A genuine tie
-     between candidate clusters is left unplaced rather than guessed.
+         ("e2e span") — now it's just ordinary membership. A process with
+         no writes at all becomes a member of nothing.
 
 Since the restructure below, the pipeline also has optional, opt-in
 extras — none change default behaviour: hub detection (BSPResult.hub_flags,
@@ -237,6 +243,7 @@ class BSPResult:
     process_span: Dict[str, List[int]] = field(default_factory=dict)  # process → cluster ids it spans (e2e or confirmed override)
     hub_flags: List[HubFlag] = field(default_factory=list)                 # processos/entidades que dominam a matriz (só alerta)
     pending_conflicts: List[PendingConflict] = field(default_factory=list)  # conflitos atomicidade vs. pesos, por confirmar
+    unallocated_reads: Dict[str, List[int]] = field(default_factory=dict)  # processo sem cluster → ids de cluster que lê (só relatório)
 
 
 @dataclass
@@ -933,7 +940,9 @@ def _build_clusters(
     Orquestra a montagem: agrupa entidades, obriga os processos atómicos a
     ficarem com o que escrevem, e só depois dá a cada processo a sua
     membership real — cada um membro de todos os clusters onde escreve,
-    sem concurso nenhum entre processos.
+    sem concurso nenhum entre processos. Um processo que nunca escreve
+    nada (só lê) nunca fica membro de cluster nenhum, mesmo que a leitura
+    seja de um único cluster óbvio — membership vem só de escrever.
 
     Já não recebe process_weights: desde que a montagem deixou de ser um
     concurso, esse peso não tem mais nenhum papel aqui — continua a
@@ -953,72 +962,9 @@ def _build_clusters(
         )
 
     clusters = _assign_process_membership(df, ent_groups)
-    clusters = _place_pure_readers(clusters, df)
 
     return clusters, decisions
 
-
-def _place_pure_readers(clusters: List[Cluster], df: pd.DataFrame) -> List[Cluster]:
-    """
-    Um processo que nunca escreve (C/U/D) nada ainda não é membro de
-    nenhum cluster depois de _assign_process_membership — não há nenhuma
-    escrita que o coloque lá. Este passo dá-lhe casa: o cluster que CRIA
-    a maior parte do que ele lê.
-
-    Substitui _absorb_pure_readers, que MOVIA um leitor que uma etapa
-    concorrente anterior já tinha colocado (bem ou mal) nalgum cluster.
-    Essa etapa concorrente já não existe, por isso já não há nada
-    "colocado" para mover — só processos por colocar pela primeira vez.
-    Por essa mesma razão já não interessa se o processo é atómico ou
-    end_to_end: não há "lugar de origem" nenhum para um end_to_end ser
-    poupado de deixar, por isso a mesma regra serve para os dois.
-
-    Numa igualdade real entre dois ou mais clusters candidatos, o
-    processo fica sem cluster em vez de escolher um ao calhas — é mais
-    honesto reportar "isto não tem uma casa clara" do que colar a um
-    sítio arbitrário só para não aparecer vazio. É esta regra que evita
-    processos leitores ficarem colados uns aos outros só porque nenhuma
-    das entidades que leem tem sequer um criador conhecido.
-
-    Como cada cluster já nasce diretamente de um ent_group (ver
-    _assign_process_membership), nunca fica vazio nem precisa de ser
-    removido — não há renumeração nenhuma a fazer aqui.
-    """
-    # entidade → índice do cluster que a cria. Percorre só as entidades DO
-    # PRÓPRIO cluster (c.entities), não todas as colunas da matriz — com a
-    # membership nova, um processo pode pertencer a vários clusters ao
-    # mesmo tempo (ex: cria E1, E2 e E3, cada uma no seu cluster). Procurar
-    # em todas as colunas fazia esse mesmo processo, ao ser encontrado no
-    # cluster errado, sobrescrever o dono certo de uma entidade que nem
-    # sequer pertence a esse cluster.
-    owner_cluster: Dict[str, int] = {}
-    for i, c in enumerate(clusters):
-        for proc in c.processes:
-            for ent in c.entities:
-                if _op_weight(df.at[proc, ent]) == _OP_PRIORITY["C"]:
-                    owner_cluster[ent] = i
-
-    placed = {p for c in clusters for p in c.processes}
-    for proc in df.index:
-        if proc in placed:
-            continue
-        read_ents = [e for e in df.columns if _op_weight(df.at[proc, e]) > 0]
-        if not read_ents:
-            continue  # processo sem operações nenhumas -- nada a colocar
-
-        scores: Dict[int, int] = defaultdict(int)
-        for e in read_ents:
-            ci = owner_cluster.get(e)
-            if ci is not None:
-                scores[ci] += 1
-
-        if scores:
-            top_score = max(scores.values())
-            winners = [ci for ci, s in scores.items() if s == top_score]
-            if len(winners) == 1:
-                clusters[winners[0]].processes.append(proc)
-
-    return clusters
 
 def _compute_process_span(
     df: pd.DataFrame,
@@ -1071,6 +1017,30 @@ def _compute_process_span(
     return span
 
 
+def _compute_unallocated_reads(df: pd.DataFrame, clusters: List[Cluster]) -> Dict[str, List[int]]:
+    """
+    Para cada processo que não é membro de nenhum cluster (um leitor puro
+    — ver _assign_process_membership), a lista de clusters cujas entidades
+    ele lê. Só para relatório: o processo continua a aceder a dados reais,
+    mesmo sem representar nenhum sistema, e isso não deve ficar invisível
+    para o arquiteto (nem para quem lê o log).
+    """
+    placed = {p for c in clusters for p in c.processes}
+    entity_cluster: Dict[str, int] = {e: c.id for c in clusters for e in c.entities}
+
+    reads: Dict[str, List[int]] = {}
+    for proc in df.index:
+        if proc in placed:
+            continue
+        touched_ids = sorted({
+            entity_cluster[e] for e in df.columns
+            if e in entity_cluster and _op_weight(df.at[proc, e]) > 0
+        })
+        if touched_ids:
+            reads[proc] = touched_ids
+    return reads
+
+
 def compute_isa_metrics(
     clusters: List[Cluster],
     crud_matrix: Dict[str, Dict[str, str]],
@@ -1094,23 +1064,29 @@ def compute_isa_metrics(
     all_ents  = list(df.columns)
 
     proc_cluster_ids: Dict[str, Set[int]] = {p: set() for p in all_procs}
-    ent_cud_clusters: Dict[str, Set[int]] = {e: set() for e in all_ents}
-    ent_any_clusters: Dict[str, Set[int]] = {e: set() for e in all_ents}
-
     for c in clusters:
         for p in c.processes:
             if p in proc_cluster_ids:
                 proc_cluster_ids[p].add(c.id)
-            if p not in df.index:
-                continue
-            for e in all_ents:
-                if e not in df.columns:
-                    continue
-                w = _op_weight(df.at[p, e])
-                if w > _OP_PRIORITY["R"]:
-                    ent_cud_clusters[e].add(c.id)
-                if w > 0:
-                    ent_any_clusters[e].add(c.id)
+
+    # De onde é que cada entidade é tocada — não só pelos processos que são
+    # membros formais de algum cluster. Um processo puramente leitor nunca
+    # é membro de nenhum cluster (ver _assign_process_membership), mas
+    # continua a ser um acesso real aos dados; ignorá-lo escondia leituras
+    # cruzadas genuínas destas métricas. Para um processo sem cluster, cada
+    # entidade que toca ganha uma origem própria e única (o nome do
+    # processo) em vez de um id de cluster — continua a contar como mais
+    # um sítio de acesso, mesmo sem pertencer formalmente a um sistema.
+    ent_cud_clusters: Dict[str, Set] = {e: set() for e in all_ents}
+    ent_any_clusters: Dict[str, Set] = {e: set() for e in all_ents}
+    for p in all_procs:
+        sources = proc_cluster_ids[p] or {f"unaffiliated:{p}"}
+        for e in all_ents:
+            w = _op_weight(df.at[p, e])
+            if w > _OP_PRIORITY["R"]:
+                ent_cud_clusters[e].update(sources)
+            if w > 0:
+                ent_any_clusters[e].update(sources)
 
     # RSF: total processes / sum of cluster-spans per process (ideal = 1)
     total_spans = sum(max(1, len(v)) for v in proc_cluster_ids.values())
@@ -1120,10 +1096,17 @@ def compute_isa_metrics(
     total_cud = sum(max(1, len(v)) for v in ent_cud_clusters.values())
     naief = len(all_ents) / total_cud if total_cud else 1.0
 
-    # LCOISF: for each cluster, fraction of entity pairs that share at least one process
+    # LCOISF: for each cluster, fraction of entity pairs that share at least one process.
+    # Uses every process in the matrix, not just this cluster's formal
+    # members -- a pure reader with no cluster of its own can still be the
+    # only real evidence that two entities in someone else's cluster are
+    # used together, and that's exactly the signal LCOISF is meant to
+    # capture (confirmed live: a reader touching both entities of a
+    # cluster, with no other process linking them, scored LCOISF 0.0
+    # instead of 1.0 when restricted to formal members).
     cohesion_vals = []
     for c in clusters:
-        procs_in = [p for p in c.processes if p in df.index]
+        procs_in = all_procs
         ents_in  = [e for e in c.entities  if e in df.columns]
         if len(ents_in) < 2:
             cohesion_vals.append(1.0)
@@ -1344,6 +1327,12 @@ def run_bsp(
     # não é preciso nenhum passo extra a converter isso em membership.
     process_span = _compute_process_span(df, clusters, process_types, confirmed_overrides)
 
+    # Processos que nunca escrevem (leitores puros) não são membros de
+    # nenhum cluster — de propósito, ver _assign_process_membership. Isto
+    # regista o que continuam a aceder, para não ficarem invisíveis.
+    unallocated_reads = _compute_unallocated_reads(df, clusters)
+
     return BSPResult(clusters=clusters, reordered_matrix=reordered,
                      entity_owners=owners, process_span=process_span,
-                     hub_flags=hub_flags, pending_conflicts=pending_conflicts)
+                     hub_flags=hub_flags, pending_conflicts=pending_conflicts,
+                     unallocated_reads=unallocated_reads)

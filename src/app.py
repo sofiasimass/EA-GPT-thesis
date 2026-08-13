@@ -188,6 +188,7 @@ async def pipeline(session: Session):
             "matrix": _matrix_payload(bsp.reordered_matrix),
             "metrics": iteration_metrics,
             "process_span": bsp.process_span,
+            "unallocated_reads": bsp.unallocated_reads,
         })
 
         principles_path = Path(__file__).parent / "resources" / "ea_principles.txt"
@@ -305,6 +306,7 @@ async def pipeline(session: Session):
                 "matrix": _matrix_payload(bsp.reordered_matrix),
                 "metrics": iteration_metrics,
                 "process_span": bsp.process_span,
+                "unallocated_reads": bsp.unallocated_reads,
             })
 
             bsp_iterations.append({
@@ -331,6 +333,7 @@ async def pipeline(session: Session):
                 "clusters": [c.to_dict() for c in bsp.clusters],
                 "entity_owners": bsp.entity_owners,
                 "process_span": bsp.process_span,
+                "unallocated_reads": bsp.unallocated_reads,
                 "metrics": iteration_metrics,
             })
 
@@ -517,12 +520,14 @@ async def pipeline(session: Session):
                 "clusters": [c.to_dict() for c in initial_bsp.clusters],
                 "entity_owners": initial_bsp.entity_owners,
                 "process_span": initial_bsp.process_span,
+                "unallocated_reads": initial_bsp.unallocated_reads,
             },
             "bsp_iterations": bsp_iterations,
             "final_bsp": {
                 "clusters": [c.to_dict() for c in bsp.clusters],
                 "entity_owners": bsp.entity_owners,
                 "process_span": bsp.process_span,
+                "unallocated_reads": bsp.unallocated_reads,
                 "process_weights": {
                     str(k): {"weight": v, "reasoning": acc_process_reasoning.get(k, "")}
                     for k, v in acc_process_weights.items()

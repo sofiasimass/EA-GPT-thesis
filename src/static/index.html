@@ -974,8 +974,9 @@ body {
 .cx-med  { background: rgba(251,191,36,.12); color: var(--c-u); border: 1px solid rgba(251,191,36,.25); }
 .cx-high { background: rgba(248,113,113,.12); color: var(--c-d); border: 1px solid rgba(248,113,113,.25); }
 
-.dq-warn-card { background: rgba(251,191,36,.06); border: 1px solid rgba(251,191,36,.3); border-radius: var(--r); padding: 14px; width: 100%; }
+.dq-warn-card { background: rgba(251,191,36,.06); border: 1px solid rgba(251,191,36,.3); border-radius: var(--r); padding: 14px; width: 100%; margin-bottom: 12px; }
 .dq-warn-card p { font-size: 13px; color: #fbbf24; line-height: 1.55; white-space: pre-wrap; }
+.unallocated-list { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: #fbbf24; line-height: 1.6; }
 
 /* ────── Process-type review ────── */
 .ptype-list { display: flex; flex-direction: column; }
@@ -1593,6 +1594,26 @@ function appendClustering(msg) {
     chips.appendChild(chip);
   });
   wrap.appendChild(chips);
+
+  // Leitores puros: processos sem nenhuma escrita nunca são membros de
+  // nenhum cluster (ver bsp.py), por isso não aparecem em nenhum chip
+  // acima — sem esta nota, desapareciam sem explicação nenhuma.
+  if (msg.unallocated_reads && Object.keys(msg.unallocated_reads).length) {
+    const clusterName = {};
+    msg.clusters.forEach(c => { clusterName[c.id] = c.name; });
+    const items = Object.entries(msg.unallocated_reads).map(([proc, ids]) => {
+      const names = ids.map(id => clusterName[id] || `Cluster ${id}`).join(', ');
+      return `<li><strong>${escHtml(proc)}</strong> — reads from: ${escHtml(names)}</li>`;
+    }).join('');
+    const note = document.createElement('div');
+    note.className = 'dq-warn-card';
+    note.innerHTML = `
+      <p>ℹ These processes only read data — they don't write anything, so they
+      aren't shown as belonging to any cluster above. They still access the
+      data listed below:</p>
+      <ul class="unallocated-list">${items}</ul>`;
+    wrap.appendChild(note);
+  }
 
   // Reordered matrix
   const body = document.createElement('div');
