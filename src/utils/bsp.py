@@ -640,15 +640,26 @@ def derive_threshold(
     Se não houver pares suficientes (`min_pairs`) para uma estatística com
     significado, usa `fallback` (o antigo valor fixo) em vez de arriscar.
 
-    Akkasi, Seyyedi & Shams, "Presenting A Method for Benchmarking
-    Application in the Enterprise Architecture Planning Process Based on
-    Federal Enterprise Architecture Framework," IEEE Xplore.
+    NOTA sobre a citação: esta função não vem de nenhum paper da revisão
+    de literatura da tese — confirmado ao ler os 21 papers em
+    `SLR/Downloaded_Papers/RQ1`. Chegou a estar atribuída a Akkasi,
+    Seyyedi & Shams ("Presenting A Method for Benchmarking Application in
+    the Enterprise Architecture Planning Process..."), mas essa
+    atribuição estava errada — esse paper usa uma fórmula parecida na
+    forma (`média ± 2×desvio`), mas para excluir organizações-candidatas
+    atípicas de uma lista de parceiros de benchmarking, não para decidir
+    se dois processos/entidades devem ficar no mesmo cluster. É um
+    threshold estatístico próprio deste projeto, não uma técnica
+    importada da literatura.
 
-    NOTA: o k=2 do artigo original é para outro tipo de problema (aceitar
-    ou não um pequeno conjunto de candidatos face a um único parceiro
-    ideal). Aqui o threshold é usado em muitas comparações seguidas
-    enquanto se percorre a matriz toda, por isso o k certo para este caso
-    tinha de ser calibrado à parte.
+    A referência certa para o threshold FIXO (0.5) que este substitui,
+    opcionalmente, é Lee, H.-S., "Automatic clustering of business
+    processes in business systems planning," European Journal of
+    Operational Research 114(2), 354-362, 1999 — que testou vários
+    valores de threshold para clustering de processos em BSP e escolheu
+    k=0.5 experimentalmente, admitindo que "There is no guideline for
+    determining suitable k." Foi essa admissão que motivou construir e
+    calibrar esta alternativa adaptativa.
 
     Testado contra as 21 matrizes reais acumuladas em
     `src/resources/initial_matrices/`: a distribuição de similaridade
@@ -1278,6 +1289,14 @@ def run_bsp(
     ----------
     matrix_data : { process_name: { entity_name: "C"|"R"|"U"|"D" } }
         Raw CRUD matrix dict as stored in Matrix.matrix.
+    density_threshold : the similarity a pair of processes/entities must
+        clear to be grouped together, when adaptive_threshold is False
+        (the default). 0.5 follows Lee, H.-S., "Automatic clustering of
+        business processes in business systems planning," European
+        Journal of Operational Research 114(2), 354-362, 1999 — tested
+        several threshold values for BSP process clustering and settled
+        on 0.5 experimentally ("There is no guideline for determining
+        suitable k").
     confirmed_overrides : { process_name: {entity_name, ...} }
         Entities the architect has explicitly confirmed can leave an
         atomic process's forced cluster, for this run only.

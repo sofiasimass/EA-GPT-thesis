@@ -177,6 +177,102 @@ human-readable summary of what changed and why.
 
 ## Changelog
 
+### v0.4.30 — 2026-08-14
+**Added**
+- **EA principles now get their own visible first pass, before any user
+  constraint.** Previously `initial_bsp` ran `run_bsp` with no weights at
+  all (`app.py`, old line 178) — `_compute_ea_weights` (and therefore
+  `bsp_prompt.txt`'s STEP 2, "apply EA principles to pairs not covered by
+  STEP 1") was never invoked until the architect typed their first
+  constraint, so the very first clustering the architect saw was purely
+  structural, with no EA guidance behind it at all. Fixed by inserting an
+  explicit three-step sequence at the start of every session:
+  1. A pure structural `run_bsp` call with no weights, sent to the UI as
+     a new `structural_preview` message ("Structural Clustering (before
+     EA principles)") — the genuine "before" state, shown rather than
+     computed and discarded internally.
+  2. `_compute_ea_weights(structural_draft.clusters, baseline, "")` —
+     empty `user_constraints`, so only STEP 2 of `bsp_prompt.txt` fires.
+     The resulting process/entity weights seed the accumulators that
+     later iterations build on with `.update()`, so a user constraint in
+     iteration 1 still layers on top of (and, per STEP 1, overrides) the
+     principles-only weights rather than replacing them.
+  3. `run_bsp` again with those weights — this is what's shown as
+     "Initial BSP Clustering" (`iteration: 0`), same as before, just no
+     longer neutral.
+- **"i" info button on the "Applying EA principles…" status message,
+  opening a popup with exactly what the principles changed.** Requested
+  directly: a fixed always-visible note was considered and rejected in
+  favor of an on-demand popup, so the status line stays uncluttered
+  unless the architect asks. Implementation:
+  - `app.py` diffs the structural draft against the principles-applied
+    result with the existing (previously unused, see
+    `TODO_next_session.md`'s old Priority 2 list) `classify_changes()`,
+    and bundles it with the process/entity weights (formatted as
+    `"A ↔ B"` pair keys, not Python tuple reprs) and their reasoning into
+    a `principles_detail` payload attached to the `clustering` message.
+  - `index.html`: the `status` message carries a `marker: "principles"`
+    field; `appendStatus` keeps a `markerStatusRows` map from marker to
+    its (possibly already-frozen-by-`stopLoader()`) status row, since
+    freezing only dims the row, it never removes it from the DOM. When
+    the `clustering` message with `principles_detail` arrives,
+    `appendClustering` injects the "i" button into that row and wires it
+    to a new dark-themed modal (`openPrinciplesModal`) listing weight
+    changes (with reasoning) on both axes and the resulting cluster
+    membership changes.
+  - Side effect, not the point but worth noting: because
+    `structural_preview` reuses `appendClustering`'s rendering path
+    (including setting `lastIterationMetrics`), the ISA-metrics delta
+    shown on "Initial BSP Clustering" now reflects the structural→
+    principles change specifically, not just "first iteration, no
+    baseline."
+  - `log.json` gained a top-level `structural_draft` block and
+    `initial_bsp.principles_detail`, so the full before/after is
+    reconstructable after the fact, not just visible live.
+- Not done: live browser verification (per standing instruction, the
+  assistant doesn't launch the app) — the architect should confirm the
+  `structural_preview` → "Applying EA principles…" (with working "i"
+  button) → "Initial BSP Clustering" sequence end-to-end before treating
+  this as settled.
+
+### v0.4.29 — 2026-08-13
+**Fixed (citation)**
+- **The `derive_threshold`/`adaptive_threshold` mechanism (v0.4.27) was
+  citing the wrong paper.** Traced through this thesis's own SLR
+  collection (`SLR/Downloaded_Papers/RQ1`, 21 papers, both the top level
+  and `relevant/`) looking for the actual source — none of them describe
+  an adaptive (mean + k·stdev) similarity threshold for BSP-style
+  clustering. The previously-cited Akkasi, Seyyedi & Shams paper turns
+  out to be about something else entirely (selecting benchmarking
+  *partner organizations* via multi-criteria decision analysis, not
+  clustering processes/entities) — its `mean ± 2·stdev` formula is used
+  to exclude outlier *candidate organizations* from a shortlist, a
+  different problem in a different domain. Removed that citation from
+  `derive_threshold`'s docstring; it's now documented as an original,
+  uncited statistical heuristic for this project, calibrated against
+  real data (v0.4.27) rather than derived from prior work.
+  - Found the *right* citation for the existing fixed `density_threshold
+    = 0.5` default, which had none before: Lee, H.-S., "Automatic
+    clustering of business processes in business systems planning,"
+    European Journal of Operational Research 114(2), 354-362, 1999 —
+    tests several threshold values for BSP process clustering and
+    settles on `k = 0.5` experimentally, explicitly noting *"There is no
+    guideline for determining suitable k."* That admission is the actual
+    motivation for having built an adaptive alternative at all. Added to
+    `run_bsp`'s docstring.
+
+**Changed**
+- **Reverted `app.py`'s `adaptive_threshold=True, adaptive_k=2.0`
+  (briefly enabled on all 3 real `run_bsp` calls) back to the fixed
+  `density_threshold=0.5` default (`adaptive_threshold=False`).** Never
+  re-verified against a real live run in between — decided instead to
+  keep `0.5` (Lee's validated value) as the thesis's primary result, and
+  present the adaptive-threshold comparison (v0.4.27's 21-matrix sweep)
+  as a separate documented experiment rather than the app's live
+  behavior. `adaptive_threshold`/`adaptive_k`/`adaptive_min_pairs`
+  remain fully implemented and available as opt-in parameters to
+  `run_bsp` for exactly that kind of comparison.
+
 ### v0.4.27 — 2026-08-13
 **Investigated (documentation only — no behavior change)**
 - **Calibrated `adaptive_k` for `derive_threshold`/`adaptive_threshold`
