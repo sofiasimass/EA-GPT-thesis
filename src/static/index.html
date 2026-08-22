@@ -978,6 +978,99 @@ body {
 .dq-warn-card p { font-size: 13px; color: #fbbf24; line-height: 1.55; white-space: pre-wrap; }
 .unallocated-list { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: #fbbf24; line-height: 1.6; }
 
+/* ────── Principles "i" info button + modal ────── */
+.info-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  border: 1px solid var(--text3);
+  background: transparent;
+  color: var(--text2);
+  font-size: 11px;
+  font-weight: 700;
+  font-style: italic;
+  font-family: Georgia, serif;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+  margin-left: 4px;
+  transition: border-color .15s, color .15s;
+}
+.info-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10,14,26,.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  animation: modalFadeIn .15s ease;
+}
+@keyframes modalFadeIn { from { opacity: 0; } to { opacity: 1; } }
+.modal-box {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  width: min(640px, 90vw);
+  max-height: 78vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0,0,0,.4);
+}
+.modal-head {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 0 0 auto;
+}
+.modal-head h3 { font-size: 13px; font-weight: 600; color: var(--text); text-transform: uppercase; letter-spacing: .3px; }
+.modal-close {
+  background: transparent;
+  border: none;
+  color: var(--text2);
+  font-size: 20px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 2px 6px;
+}
+.modal-close:hover { color: var(--text); }
+.modal-body { padding: 6px 16px 16px; overflow-y: auto; }
+.modal-body h4 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .3px;
+  color: var(--text2);
+  margin: 16px 0 8px;
+}
+.weight-item {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.weight-item:last-child { border-bottom: none; }
+.weight-pair { color: var(--text); flex: 1 1 auto; min-width: 160px; }
+.weight-val { font-weight: 700; flex: 0 0 auto; }
+.weight-val.pos { color: var(--accent); }
+.weight-val.neg { color: var(--c-d); }
+.weight-reason { color: var(--text2); font-size: 12px; flex-basis: 100%; }
+.change-item { font-size: 13px; color: var(--text); padding: 6px 0; border-bottom: 1px solid var(--border); }
+.change-item:last-child { border-bottom: none; }
+.change-item .arrow { color: var(--text3); margin: 0 6px; }
+.modal-empty { color: var(--text3); font-size: 13px; font-style: italic; padding: 4px 0 8px; }
+
 /* ────── Process-type review ────── */
 .ptype-list { display: flex; flex-direction: column; }
 .ptype-row { display: flex; gap: 10px; align-items: center; justify-content: space-between; padding: 8px 0; border-top: 1px solid var(--border); }
@@ -1283,6 +1376,7 @@ const CLUSTER_COLORS = [
 let currentLoader    = null; // active .mloader-wrap
 let currentStatusRow = null; // entire msg-row of the last status message
 let lastIterationMetrics = null; // previous clustering iteration's ISA metrics, for deltas
+let markerStatusRows = {}; // msg.marker -> its status .msg-row, kept even after stopLoader() freezes it
 
 function stopLoader() {
   if (currentLoader) {
@@ -1323,6 +1417,7 @@ function connectWS() {
 function handleMsg(msg) {
   switch (msg.type) {
     case 'status':            appendStatus(msg); break;
+    case 'structural_preview': appendClustering(msg); break;
     case 'constraints_found': appendConstraintsFound(msg.constraints); break;
     case 'crud_matrix':       appendCrudMatrix(msg); break;
     case 'process_type_review': appendProcessTypeReview(msg); break;
@@ -1385,6 +1480,7 @@ function appendStatus(msg) {
   }
 
   currentStatusRow = addAiRow(wrap, 'wide');
+  if (msg.marker) markerStatusRows[msg.marker] = currentStatusRow;
 }
 
 function appendConstraintsFound(constraints) {
@@ -1568,6 +1664,24 @@ function appendClustering(msg) {
   head.textContent = `⬡ ${msg.title} — ${msg.clusters.length} cluster(s)`;
   wrap.appendChild(head);
 
+  // If this clustering is the result of applying EA principles alone
+  // (the "structural draft → principles" step), attach an "i" button to
+  // the "Applying EA principles…" status row above so the architect can
+  // see exactly what changed, without cluttering the card itself.
+  if (msg.principles_detail) {
+    const markerRow = markerStatusRows['principles'];
+    const statusSpan = markerRow && markerRow.querySelector('.status-row > span');
+    if (statusSpan && !statusSpan.querySelector('.info-btn')) {
+      const infoBtn = document.createElement('button');
+      infoBtn.className = 'info-btn';
+      infoBtn.type = 'button';
+      infoBtn.textContent = 'i';
+      infoBtn.title = 'What did the EA principles change?';
+      infoBtn.onclick = () => openPrinciplesModal(msg.principles_detail);
+      statusSpan.appendChild(infoBtn);
+    }
+  }
+
   // ISA quality metrics for this iteration — lets the architect judge "am I satisfied?"
   // with a quality signal instead of gut feel, and see immediately what an added
   // constraint traded off (e.g. cohesion up, data-uniqueness down).
@@ -1650,6 +1764,73 @@ function appendClustering(msg) {
       chip.style.boxShadow = '';
     });
   });
+}
+
+// ───────────────────────── Principles-change modal ─────────────────────────
+function closeModal() {
+  const ov = document.querySelector('.modal-overlay');
+  if (ov) ov.remove();
+  document.removeEventListener('keydown', closeModalOnEsc);
+}
+
+function closeModalOnEsc(e) {
+  if (e.key === 'Escape') closeModal();
+}
+
+function buildWeightList(weights) {
+  const entries = Object.entries(weights || {});
+  if (!entries.length) return '<p class="modal-empty">No weight changes on this axis.</p>';
+  return entries.map(([pair, info]) => {
+    const cls = info.weight > 0 ? 'pos' : (info.weight < 0 ? 'neg' : '');
+    const sign = info.weight > 0 ? '+' : '';
+    return `
+      <div class="weight-item">
+        <span class="weight-pair">${escHtml(pair)}</span>
+        <span class="weight-val ${cls}">${sign}${info.weight}</span>
+        ${info.reasoning ? `<span class="weight-reason">${escHtml(info.reasoning)}</span>` : ''}
+      </div>`;
+  }).join('');
+}
+
+function openPrinciplesModal(detail) {
+  closeModal();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.onclick = (e) => { if (e.target === overlay) closeModal(); };
+
+  const box = document.createElement('div');
+  box.className = 'modal-box';
+
+  const changes = detail.changes || [];
+  const changesHtml = changes.length
+    ? changes.map(ch => `
+        <div class="change-item">
+          <strong>${escHtml(ch.subject)}</strong>
+          moved from <em>${escHtml(ch.from_cluster || '—')}</em>
+          <span class="arrow">→</span>
+          <em>${escHtml(ch.to_cluster || '—')}</em>
+        </div>`).join('')
+    : '<p class="modal-empty">No process changed cluster after applying the principles.</p>';
+
+  box.innerHTML = `
+    <div class="modal-head">
+      <h3>What the EA principles changed</h3>
+      <button class="modal-close" type="button" title="Close">×</button>
+    </div>
+    <div class="modal-body">
+      <h4>Process weight changes</h4>
+      ${buildWeightList(detail.process_weights)}
+      <h4>Entity weight changes</h4>
+      ${buildWeightList(detail.entity_weights)}
+      <h4>Cluster membership changes</h4>
+      ${changesHtml}
+    </div>`;
+
+  box.querySelector('.modal-close').onclick = closeModal;
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  document.addEventListener('keydown', closeModalOnEsc);
 }
 
 function appendQuestion(msg) {

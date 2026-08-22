@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from utils import Matrix
 from utils.generator import Generator
-from utils.bsp import run_bsp, compute_isa_metrics, matrix_to_clusters
+from utils.bsp import run_bsp, compute_isa_metrics, matrix_to_clusters, classify_changes
 
 app = FastAPI()
 
@@ -174,11 +174,80 @@ async def pipeline(session: Session):
                     process_type_overrides[name] = {"from": mat.process_types[name], "to": ptype}
                 mat.set_process_type(name, ptype)
 
-        await session.send({"type": "status", "message": "Running BSP clustering…", "loading": "bsp"})
-        bsp = run_bsp(mat.matrix, process_types=mat.process_types)
-        initial_bsp = bsp
+        principles_path = Path(__file__).parent / "resources" / "ea_principles.txt"
+        baseline = principles_path.read_text(encoding="utf-8")
+
+        acc_constraints = ""
+        acc_process_weights: dict = {}
+        acc_process_reasoning: dict = {}
+        acc_entity_weights: dict = {}
+        acc_entity_reasoning: dict = {}
         bsp_iterations: list = []
+
+        # 1. Rascunho estrutural, puramente pelos dados, sem princípios de
+        # EA nem constraints do arquiteto — mostrado ao vivo antes de
+        # qualquer influência externa, para o "antes" ficar visível, não
+        # escondido dentro de um passo interno.
+        await session.send({"type": "status", "message": "Running BSP clustering…", "loading": "bsp"})
+        structural_draft = run_bsp(mat.matrix, process_types=mat.process_types)
+        structural_metrics = compute_isa_metrics(structural_draft.clusters, mat.matrix, mat.process_types)
+        await session.send({
+            "type": "structural_preview",
+            "title": "Structural Clustering (before EA principles)",
+            "clusters": [c.to_dict() for c in structural_draft.clusters],
+            "matrix": _matrix_payload(structural_draft.reordered_matrix),
+            "metrics": structural_metrics,
+            "process_span": structural_draft.process_span,
+            "unallocated_reads": structural_draft.unallocated_reads,
+        })
+
+        # 2. Aplica os princípios de EA sozinhos (STEP 2 do bsp_prompt.txt,
+        # sem constraints do arquiteto — user_constraints="") sobre o
+        # rascunho estrutural, e volta a correr o BSP já com esses pesos.
+        # Isto é o que fica mostrado como "Initial BSP Clustering" — já
+        # não é neutro, já reflete os princípios, mas ainda nenhuma
+        # decisão do arquiteto.
+        await session.send({
+            "type": "status", "message": "Applying EA principles to initial clustering…",
+            "loading": "bsp", "marker": "principles",
+        })
+        pw0, pr0, ew0, er0 = await gen._compute_ea_weights(structural_draft.clusters, baseline, "")
+        acc_process_weights.update(pw0)
+        acc_process_reasoning.update(pr0)
+        acc_entity_weights.update(ew0)
+        acc_entity_reasoning.update(er0)
+
+        bsp = run_bsp(
+            mat.matrix, process_types=mat.process_types,
+            process_weights=acc_process_weights, process_reasoning=acc_process_reasoning,
+            entity_weights=acc_entity_weights, entity_reasoning=acc_entity_reasoning,
+        )
+        initial_bsp = bsp
         iteration_metrics = compute_isa_metrics(bsp.clusters, mat.matrix, mat.process_types)
+
+        # O que os princípios mudaram, em relação ao rascunho estrutural —
+        # para o botão "i" na mensagem de status acima ter o que mostrar.
+        struct_names = {c.id: c.name for c in structural_draft.clusters}
+        new_names = {c.id: c.name for c in bsp.clusters}
+        principles_changes = classify_changes(structural_draft.clusters, bsp.clusters)
+        principles_detail = {
+            "process_weights": {
+                " ↔ ".join(k): {"weight": v, "reasoning": pr0.get(k, "")}
+                for k, v in pw0.items()
+            },
+            "entity_weights": {
+                " ↔ ".join(k): {"weight": v, "reasoning": er0.get(k, "")}
+                for k, v in ew0.items()
+            },
+            "changes": [
+                {
+                    "subject": ch.subject,
+                    "from_cluster": struct_names.get(ch.from_cluster) if ch.from_cluster is not None else None,
+                    "to_cluster": new_names.get(ch.to_cluster) if ch.to_cluster is not None else None,
+                }
+                for ch in principles_changes
+            ],
+        }
 
         await session.send({
             "type": "clustering",
@@ -189,16 +258,9 @@ async def pipeline(session: Session):
             "metrics": iteration_metrics,
             "process_span": bsp.process_span,
             "unallocated_reads": bsp.unallocated_reads,
+            "principles_detail": principles_detail,
         })
 
-        principles_path = Path(__file__).parent / "resources" / "ea_principles.txt"
-        baseline = principles_path.read_text(encoding="utf-8")
-
-        acc_constraints = ""
-        acc_process_weights: dict = {}
-        acc_process_reasoning: dict = {}
-        acc_entity_weights: dict = {}
-        acc_entity_reasoning: dict = {}
         acc_confirmed_overrides: dict[str, set] = {}
         acc_declined_overrides: dict[str, set] = {}
         acc_override_history: list[dict] = []  # full audit trail — why each override was decided
@@ -521,6 +583,13 @@ async def pipeline(session: Session):
                 "entity_owners": initial_bsp.entity_owners,
                 "process_span": initial_bsp.process_span,
                 "unallocated_reads": initial_bsp.unallocated_reads,
+                "principles_detail": principles_detail,
+            },
+            "structural_draft": {
+                "clusters": [c.to_dict() for c in structural_draft.clusters],
+                "entity_owners": structural_draft.entity_owners,
+                "process_span": structural_draft.process_span,
+                "unallocated_reads": structural_draft.unallocated_reads,
             },
             "bsp_iterations": bsp_iterations,
             "final_bsp": {
