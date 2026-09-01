@@ -47,6 +47,13 @@ TYPE A — Application/system constraints (e.g. "AppX manages both suppliers and
         Reserve +0.5 only for pairs that are clearly core to the application's purpose.
     c) Do NOT assign +0.5 to every pair — differentiate by strength of association.
     d) Do NOT skip cross-cluster pairs. Those are the most important to fix.
+    e) ENTITY AXIS — clusters are formed from ENTITY groups, not process pairs, so a
+        process_bias alone changes nothing when the two domains currently sit in different
+        clusters (check CURRENT DRAFT CLUSTERS). From EXACT ENTITY NAMES, identify which
+        entities each domain's processes create, and for every cross-domain entity pair
+        currently in different clusters, ALSO assign a positive entity_bias (0 to +0.5, same
+        strength logic as (b)). This is not optional when the domains are already split across
+        clusters — it is the only axis that can actually merge them.
 
 TYPE B — Operational/transactional constraints (e.g. "operation X and operation Y must reside in the same service"):
     a) Identify the operation(s) mentioned (e.g. "order creation", "payment processing").
@@ -56,12 +63,21 @@ TYPE B — Operational/transactional constraints (e.g. "operation X and operatio
     c) For every pair where one process performs operation X and the other performs operation Y,
         assign a high positive weight (+0.4 to +0.5). These pairs are the most critical to co-locate.
     d) Do NOT skip cross-cluster pairs — those are exactly the ones the constraint is meant to fix.
+    e) ENTITY AXIS — same reasoning as TYPE A (e): a process_bias cannot move the clustering by
+        itself, only entity_bias can. From EXACT ENTITY NAMES, identify which entities operation
+        X's processes create and which entities operation Y's processes create (check CURRENT
+        DRAFT CLUSTERS for which entities sit in which cluster today). For every such entity
+        pair that is currently split across clusters, ALSO assign a positive entity_bias (+0.4
+        to +0.5). Skipping this step means the constraint will have no visible effect at all.
 
 Example TYPE B: if the user says "order creation and payment processing must be in the same service":
     - Order creation processes: [Kitchen Production, Dine-In Service, Premium Take-away]
     - Payment processing processes: [Financial Management]
     - Assign high weights (+0.4 to +0.5) to ALL pairs: (Kitchen Production, Financial Management),
     (Dine-In Service, Financial Management), (Premium Take-away, Financial Management).
+    - Order-side entities (created by those processes): [Order] — Payment-side entities: [Payment Record]
+    - If Order and Payment Record currently sit in different clusters, ALSO assign a positive
+    entity_bias (+0.4 to +0.5) to (Order, Payment Record) — this is what actually merges them.
 
 TYPE C — Separation constraints (e.g. "X and Y should be handled by separate systems", "X must not
 share a system with Y", "X and Y should be isolated from each other"):
@@ -139,6 +155,14 @@ STEP 2 — Apply EA PRINCIPLES to pairs not covered by STEP 1.
         single source of truth", "avoid duplicate data across systems") rather than process
         placement, express it as an entity_bias instead of (or in addition to) a process_bias —
         the entity axis is the more direct fit for a data-ownership principle.
+    - ENTITY AXIS FOR CO-LOCATION TOO: clusters are formed from entity groups, not process
+        pairs — a process_bias alone never moves anything when the two processes it names
+        already sit in different clusters (their entities are what's actually keeping them
+        apart). Whenever this step would emit a POSITIVE process_bias between two processes in
+        different clusters, check which entities those processes create (see CURRENT DRAFT
+        CLUSTERS) and ALSO emit a positive entity_bias between them, same strength as the
+        process_bias. Without it, the principle-driven weight has no visible effect on the
+        actual clustering — only on the pending-conflict/reordering machinery.
 
 RULES:
 - User constraint pairs ALWAYS take precedence over EA principle pairs.

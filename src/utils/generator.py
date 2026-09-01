@@ -41,9 +41,21 @@ def _validate_extraction(data: dict, process_list: List[str]) -> List[str]:
     if extra:
         issues.append(f"{len(extra)} process(es) in the output don't match any input process name: {sorted(extra)[:10]}")
 
+    # Entity count scales with the process list — a fixed absolute range (this used to be a
+    # hard "10 to 20") miscalibrates for anything far from that size: it forces fabricated
+    # entities on a small process list and forces real distinct entities to be collapsed
+    # together on a large one. These bounds are generous on purpose — a sanity check against
+    # gross under/over-differentiation, not a target to hit exactly, matching prompt.txt's
+    # own "roughly one entity per 4-6 processes" guidance.
     n_entities = len(data.get("entities", []))
-    if not (10 <= n_entities <= 20):
-        issues.append(f"entity count is {n_entities}, must be between 10 and 20")
+    n_processes = len(input_names)
+    min_entities = max(2, round(n_processes * 0.10))
+    max_entities = max(4, round(n_processes * 0.40))
+    if not (min_entities <= n_entities <= max_entities):
+        issues.append(
+            f"entity count is {n_entities} for {n_processes} processes — expected roughly "
+            f"{min_entities}-{max_entities} (about one entity per 4-6 processes)"
+        )
 
     entity_names = {e["name"] for e in data.get("entities", [])}
     touched_entities = {op["entity_name"] for op in data.get("operations", [])}
@@ -87,6 +99,17 @@ def _validate_extraction(data: dict, process_list: List[str]) -> List[str]:
 
     # Density: prompt.txt requires 4-6 CRUD entries per process. Too few gives BSP almost
     # nothing to cluster on for that process; too many usually means padding with weak reads.
+    #
+    # Briefly disabled (2026-09-01) as a diagnostic experiment after tracing this floor to a
+    # real harm — pushing the LLM to reach 4 entries reliably produces generic, non-specific
+    # padding reads, and those padded reads mathematically inflate weighted-Jaccard entity
+    # similarity enough to merge unrelated entities (confirmed: Training Course/Uniform at
+    # 0.94, Circuit/Daily Scale at 0.87 — pure padding artifacts, not real structure).
+    # Re-enabled after the experiment: removing the floor entirely reproduced the exact
+    # degenerate failure mode this check was added to catch in the first place (v0.4.10) —
+    # every one of 62 processes collapsed to a single operation, far less clustering signal
+    # than the padding version had. The floor is necessary; the padding it also causes is a
+    # separate, still-open tension, not a reason to remove it.
     op_counts: dict[str, int] = {}
     for op in data.get("operations", []):
         op_counts[op["process_name"]] = op_counts.get(op["process_name"], 0) + 1
@@ -103,6 +126,29 @@ def _validate_extraction(data: dict, process_list: List[str]) -> List[str]:
         issues.append(
             f"{len(too_dense)} process(es) have more than the allowed 6 CRUD entries "
             f"(density requirement): {too_dense[:10]}"
+        )
+
+    # A process satisfying its 4-6 entry minimum by touching 4-6 DIFFERENT entities once each
+    # is the "easy" way out — it never has to reason about a process's full lifecycle on one
+    # entity (create it, then later read/update/delete that SAME record). A process that owns
+    # an entity should show that as a combined cell (e.g. C+U on the same entity), per
+    # prompt.txt's own "Manage Clients" example. Flagged at the extraction level, not per
+    # process, because not every process needs one (a pure reader legitimately never will) —
+    # zero anywhere across a real-sized extraction means density is being reached by breadth,
+    # not depth, which starves entity-ownership resolution and clustering of a real signal.
+    cell_op_counts: dict[tuple[str, str], int] = {}
+    for op in data.get("operations", []):
+        key = (op["process_name"], op["entity_name"])
+        cell_op_counts[key] = cell_op_counts.get(key, 0) + 1
+    multi_op_cells = sum(1 for n in cell_op_counts.values() if n > 1)
+    if len(output_names) >= 5 and multi_op_cells == 0:
+        issues.append(
+            "no (process, entity) pair anywhere has more than one operation — every process "
+            "reached its operation count by touching several DIFFERENT entities once each, "
+            "never by performing more than one operation on the SAME entity. Revisit processes "
+            "that plausibly own an entity's lifecycle (creating it, then later reading/updating/"
+            "deleting that SAME record) and consolidate onto that one entity instead of spreading "
+            "across several."
         )
 
     # Entities are supposed to be SHARED data objects (prompt.txt's ENTITIES section) — one
@@ -139,7 +185,13 @@ def _write_validation_debug(debug_info: dict) -> None:
 class Generator:
     def __init__(self, model_name: str = "gpt-4o"):
 
-        self.llm = ChatOpenAI(model=model_name, temperature=0, request_timeout=120)
+        # temperature=0 minimises but does not guarantee determinism — OpenAI's own docs
+        # note residual backend non-determinism (batching, floating-point non-associativity)
+        # even at temperature 0. `seed` is their "best effort" mechanism to reduce that
+        # further; still not an absolute guarantee, but meaningfully more reproducible run
+        # to run, which matters here since prompt-change comparisons assume "same input in,
+        # same output out" so a difference is attributable to the prompt, not run-to-run luck.
+        self.llm = ChatOpenAI(model=model_name, temperature=0, seed=42, request_timeout=120)
         self.structured_output = self.llm.with_structured_output(MatrixResult)
 
     def _resolve_biases(self, biases, canonical: dict, attr_a: str, attr_b: str, label: str):
@@ -332,7 +384,6 @@ class Generator:
             "NAIEF":  ("1.0", "entity write authority — 1 = single source of truth"),
             "LCOISF": ("1.0", "cluster cohesion — 1 = no giant-stain clusters"),
             "CPSMF":  ("1.0", "critical/non-critical isolation — 1 = perfect separation"),
-            "DIIEF":  ("1.0", "data storage uniqueness — 1 = no entity redundancy"),
         }
         rows = ["Metric  | As-Is | To-Be | Ideal | Meaning",
                 "--------|-------|-------|-------|--------"]
@@ -391,7 +442,6 @@ class Generator:
             "NAIEF":  ("1.0", "entity write authority — 1 = single source of truth"),
             "LCOISF": ("1.0", "cluster cohesion — 1 = no giant-stain clusters"),
             "CPSMF":  ("1.0", "critical/non-critical isolation — 1 = perfect separation"),
-            "DIIEF":  ("1.0", "data storage uniqueness — 1 = no entity redundancy"),
         }
         rows = ["Metric  | As-Is | To-Be | Ideal | Meaning",
                 "--------|-------|-------|-------|--------"]
@@ -424,9 +474,11 @@ class Generator:
         the FEWEST remaining issues, not necessarily the last one (a later
         attempt can regress on something an earlier one got right).
 
-        Returns (result, remaining_issues) instead of just result, so
-        app.py can finally show the user what's still wrong instead of it
-        only ever reaching the server console.
+        Returns (result, remaining_issues, attempts_log) instead of just
+        result — attempts_log is the full per-attempt issue history (not
+        just the final one), so app.py can show the user the same
+        before/after transparency the EA-principles "i" popup already
+        gives for clustering, applied here to the retry loop instead.
         """
         prompt_path = os.path.join(os.path.dirname(__file__), "..", "resources", "prompt.txt")
         with open(prompt_path, "r", encoding="utf-8") as f:
@@ -493,4 +545,4 @@ class Generator:
 
         _write_validation_debug({"attempts": attempts_log, "final_issues": best_issues})
 
-        return best_result, best_issues
+        return best_result, best_issues, attempts_log

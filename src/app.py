@@ -45,6 +45,19 @@ class Session:
 sessions: dict[str, Session] = {}
 
 
+def _decode_uploaded_text(raw_bytes: bytes) -> str:
+    """
+    Decodes an uploaded CSV/TXT file, tolerating both UTF-8 and the
+    Windows-1252 encoding Excel/Notepad default to when saving on a
+    Portuguese Windows install — a plain .decode("utf-8") throws on
+    accented characters (e.g. "ç") saved that way.
+    """
+    try:
+        return raw_bytes.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return raw_bytes.decode("cp1252")
+
+
 def _matrix_payload(df: pd.DataFrame) -> dict:
     return {
         "processes": list(df.index),
@@ -89,7 +102,7 @@ async def pipeline(session: Session):
             "loading": "matrix",
         })
 
-        result, extraction_issues = await gen.extract(context=session.context, process_list=session.processes)
+        result, extraction_issues, extraction_attempts = await gen.extract(context=session.context, process_list=session.processes)
         data = result.model_dump()
 
         debug_path = Path(__file__).parent / "last_extraction_debug.json"
@@ -154,6 +167,7 @@ async def pipeline(session: Session):
             "processes": list(df_raw.index),
             "entities": list(df_raw.columns),
             "data": df_raw.to_dict(),
+            "extraction_attempts": extraction_attempts,
         })
 
         await session.send({
@@ -286,10 +300,16 @@ async def pipeline(session: Session):
             iteration += 1
             acc_constraints += f"\n\n[Iteration {iteration}]:\n{constraint}"
 
+            # Snapshot the clusters this constraint is being applied on top of, so the
+            # "i" button on this iteration's status can show what it actually changed —
+            # same idea as principles_detail above, just for a user constraint instead.
+            prev_clusters = bsp.clusters
+
             await session.send({
                 "type": "status",
                 "message": "Analysing constraints and computing EA weights…",
                 "loading": "weights",
+                "marker": f"constraint-{iteration}",
             })
             pw, pr, ew, er = await gen._compute_ea_weights(bsp.clusters, baseline, acc_constraints)
             acc_process_weights.update(pw)
@@ -359,6 +379,29 @@ async def pipeline(session: Session):
             else:
                 bsp = trial
 
+            prev_names = {c.id: c.name for c in prev_clusters}
+            new_names = {c.id: c.name for c in bsp.clusters}
+            constraint_changes = classify_changes(prev_clusters, bsp.clusters)
+            constraint_detail = {
+                "user_constraint": constraint,
+                "process_weights": {
+                    " ↔ ".join(k): {"weight": v, "reasoning": pr.get(k, "")}
+                    for k, v in pw.items()
+                },
+                "entity_weights": {
+                    " ↔ ".join(k): {"weight": v, "reasoning": er.get(k, "")}
+                    for k, v in ew.items()
+                },
+                "changes": [
+                    {
+                        "subject": ch.subject,
+                        "from_cluster": prev_names.get(ch.from_cluster) if ch.from_cluster is not None else None,
+                        "to_cluster": new_names.get(ch.to_cluster) if ch.to_cluster is not None else None,
+                    }
+                    for ch in constraint_changes
+                ],
+            }
+
             iteration_metrics = compute_isa_metrics(bsp.clusters, mat.matrix, mat.process_types)
             await session.send({
                 "type": "clustering",
@@ -369,6 +412,7 @@ async def pipeline(session: Session):
                 "metrics": iteration_metrics,
                 "process_span": bsp.process_span,
                 "unallocated_reads": bsp.unallocated_reads,
+                "constraint_detail": constraint_detail,
             })
 
             bsp_iterations.append({
@@ -485,7 +529,7 @@ async def pipeline(session: Session):
             raw_csv = await session.wait()
 
             if raw_csv:
-                content = base64.b64decode(raw_csv).decode("utf-8")
+                content = _decode_uploaded_text(base64.b64decode(raw_csv))
                 as_is_matrix: dict = {}
                 as_is_process_system: dict = {}
                 as_is_process_types: dict = {}
@@ -576,6 +620,7 @@ async def pipeline(session: Session):
 
         log_data = {
             "extraction": data,
+            "extraction_attempts": extraction_attempts,
             "data_quality_warnings": data_quality_warnings,
             "process_type_overrides": process_type_overrides,
             "initial_bsp": {
@@ -697,7 +742,7 @@ async def ws_endpoint(websocket: WebSocket, sid: str):
 
             if t == "start":
                 if "csv_b64" in raw:
-                    content = base64.b64decode(raw["csv_b64"]).decode("utf-8")
+                    content = _decode_uploaded_text(base64.b64decode(raw["csv_b64"]))
                     reader = csv.reader(io.StringIO(content))
                     session.processes = [row[0].strip() for row in reader if row and row[0].strip()]
                 elif "processes_text" in raw:
@@ -711,7 +756,7 @@ async def ws_endpoint(websocket: WebSocket, sid: str):
                             text += page.get_text()
                     session.context = text
                 elif "txt_b64" in raw:
-                    session.context = base64.b64decode(raw["txt_b64"]).decode("utf-8")
+                    session.context = _decode_uploaded_text(base64.b64decode(raw["txt_b64"]))
                 elif "context_text" in raw:
                     session.context = raw["context_text"]
 

@@ -62,8 +62,14 @@ BAD:  "Supplier Management System", "Feedback Process Data", "Order Management I
 BAD:  Procedures or systems ("Incident Response", "Data Security") — these are not data objects.
 BAD:  Two entities that are always touched by the exact same processes — merge them into one.
 
-HARD LIMIT: You MUST produce between 10 and 20 entities. No more, no fewer.
-Before finalising, count your entities. If you have more than 20, merge until you are within range.
+ENTITY COUNT SCALES WITH THE PROCESS LIST — there is no fixed number to hit. A 4-process
+list and a 500-process list should NOT produce the same entity count. As a rough anchor,
+expect roughly one entity for every 4-6 processes (e.g. ~10 processes → ~2-3 entities;
+~60 processes → ~10-15 entities; ~500 processes → ~85-125 entities) — but this is a sanity
+check on your own output, not a target to force. If your count falls far outside that ratio,
+look again: far fewer usually means you collapsed genuinely distinct shared data objects into
+one vague bucket; far more usually means you split one real object into near-duplicates, or
+defined something that isn't actually shared across multiple processes.
 
 Merge rule — combine two entities when:
   - They model the same real-world concept at different granularities (e.g. "Waste Record" + "Waste Management" → "Waste Record")
@@ -98,7 +104,17 @@ the same entity like the example above). To find them all, ask:
   - What master/reference data must it READ to function? (catalogues, price lists, profiles)
   - What approval or status data must it READ before it can proceed?
   - What existing records does it UPDATE as a side effect?
+  - Does this process's own transaction genuinely change a SECOND, different entity, not just
+    its main one? A process that closes something out often updates two records in the same
+    step — e.g. marking a loan returned AND marking the borrowed item available again, or
+    completing a task AND freeing the resource it was using. If the process's own description
+    implies changing two different records at once, both need a real C/U/D — don't record the
+    second one as a plain READ just because it isn't the process's main entity.
   - What records does it READ to produce its output? (reports, scorecards, audit trails)
+  - What records does this process permanently remove, close out, deactivate, or archive?
+    DELETE is real and expected wherever a process's job is to retire something — a contract
+    termination, a decommissioning, a cancellation, an expiry cleanup. Don't skip this question
+    just because C/R/U already reached 4 entries — if a genuine DELETE applies, include it too.
 
 Example — "Purchase order creation and approvals":
   C → Purchase Order     (the "creation" half of the process)
@@ -106,10 +122,34 @@ Example — "Purchase order creation and approvals":
   R → Supplier Profile   (must look up the supplier)
   R → Budget             (must check available budget before approving)
 
+Another Example — "Manage Client":
+  C,R,U,D → Client     (if you are managing then all operations are performed)
+
+FULL WORKED EXAMPLE — a small library circulation system (5 processes, 4 entities), showing
+what a properly balanced extraction looks like end to end, not just one process in isolation:
+
+  "Manage book catalogue"     — C,R,U,D → Book                     (owns the entity's full lifecycle)
+  "Issue book loan"           — C → Loan, R → Book, U → Book, R → Member
+  "Process book return"       — R → Loan, U → Loan, U → Book, R → Member
+  "Waive overdue fine"        — R → Fine, D → Fine, R → Member, U → Member
+  "Generate monthly usage report" — R → Loan, R → Book, R → Member, R → Fine
+
+Notice what this looks like in aggregate, not just per process: 4 of the 5 processes perform
+real writes, each with 4 entries, and TWO of them (Book, Loan) have a combined cell (more than
+one operation on the same entity within one process) — that is the norm, not the exception, for
+any process that owns or progresses an entity's lifecycle rather than just checking it. Only ONE
+process ("Generate monthly usage report") is a genuine pure reader — a real business rarely has
+more than a small minority of its processes be pure reporting/output steps; if most of your
+processes end up read-only, that is a sign you under-wrote rather than a sign this business is
+unusually reporting-heavy. Every entity here is touched by at least two different processes
+(Book by 3, Loan by 3, Member by 4, Fine by 2) — that shared, cross-process footprint is what
+gives BSP clustering something real to work with; an entity only one process ever touches is a
+sign it should probably be folded into that process's other entities instead.
+
 Note: entity and process names used in examples throughout this prompt (Purchase Order,
-Supplier Profile, Budget, Invoice, Manage Clients, Client, etc.) illustrate the PATTERN only.
-Never copy them into your output literally unless they genuinely match this specific business
-— always use the real names your own extraction has already defined.
+Supplier Profile, Budget, Invoice, Manage Clients, Client, Book, Loan, Member, Fine, etc.)
+illustrate the PATTERN only. Never copy them into your output literally unless they genuinely
+match this specific business — always use the real names your own extraction has already defined.
 
 Before finalising, count operations per process.
 Any process with fewer than 4 entries is incomplete — add READ entries for reference data

@@ -63,8 +63,9 @@ class MatrixResult(BaseModel):
     (i.e. touch 4 to 6 entities). If a process has fewer than 4 operations,
     add more READ entries for reference data it must consult (catalogues, profiles,
     prior records, approval logs). If a process has more than 6, drop the weakest READs.
-    ENTITY RULE: produce between 10 and 20 entities — no more. Merge granular or
-    overlapping entities into broader shared objects before finalising.
+    ENTITY RULE: entity count should scale with the process list, roughly one entity
+    per 4-6 processes — not a fixed count. Merge granular or overlapping entities into
+    broader shared objects before finalising.
     ORPHAN RULE: every entity you define must appear in at least one operation.
     If you cannot find a natural CRUD operation for an entity, replace it with one
     that does interact with the listed processes.

@@ -366,7 +366,6 @@ async def main():
                 "NAIEF":  "entity write authority            (ideal 1.0 = single source of truth)",
                 "LCOISF": "cluster cohesion                  (ideal 1.0 = no giant-stain clusters)",
                 "CPSMF":  "critical/non-critical isolation   (ideal 1.0 = perfect separation)",
-                "DIIEF":  "data storage uniqueness           (ideal 1.0 = no entity redundancy)",
             }
             print(f"\n{'Metric':<8} {'As-Is':>6} {'To-Be':>6} {'Δ':>7}   Meaning")
             print("-" * 70)

@@ -1,7 +1,8 @@
 """
-Unit tests for compute_isa_metrics (bsp.py) — the Vasconcelos et al. ISA
-quality metrics (RSF, NAIEF, LCOISF, CPSMF, DIIEF) that ground "is this
-architecture good" in numbers instead of a read of the output.
+Unit tests for compute_isa_metrics (bsp.py) — RSF, NAIEF, LCOISF and CPSMF,
+the 4 Vasconcelos et al. ISA quality metrics this tool implements literally,
+that ground "is this architecture good" in numbers instead of a read of the
+output.
 
 Both cases here are hand-computed, not just re-derived from the function
 under test — see the comments for the arithmetic.
@@ -12,8 +13,10 @@ from utils.bsp import Cluster, compute_isa_metrics
 def test_well_scoped_clusters_score_well_except_for_a_shared_read():
     # Two clusters, one process each writes its own entity — a clean split.
     # Create Invoice also *reads* Order (a legitimate cross-reference), which
-    # should hurt DIIEF (data spans 2 clusters) without touching NAIEF (Order
-    # is still written by exactly one process, in exactly one cluster).
+    # doesn't touch NAIEF (Order is still written by exactly one process, in
+    # exactly one cluster) but does give cluster 2 two processes with
+    # DIFFERENT entity footprints (Create Invoice touches {Invoice, Order}),
+    # which is exactly what LCOISF's #LCOISi counts.
     crud_matrix = {
         "Create Order":   {"Order": "C"},
         "View Order":     {"Order": "R"},
@@ -31,9 +34,12 @@ def test_well_scoped_clusters_score_well_except_for_a_shared_read():
 
     assert metrics["RSF"] == 1.0     # every process lives in exactly one cluster
     assert metrics["NAIEF"] == 1.0   # each entity still has exactly one writer
-    assert metrics["LCOISF"] == 1.0  # every entity pair within a cluster shares a process
+    # Cluster 1's own processes (Create Order, View Order) both touch just
+    # {Order} -- 1 distinct entity-set, #LCOIS1=1. Cluster 2 has a single
+    # process (Create Invoice) touching {Invoice, Order} -- #LCOIS2=1.
+    # LCOISF = 1 - (1+1) / (2 clusters * 3 processes * 2 entities) = 1 - 2/12.
+    assert metrics["LCOISF"] == 0.833
     assert metrics["CPSMF"] == 1.0   # nothing mixes atomic with end_to_end
-    assert metrics["DIIEF"] == 0.667  # Order is *read* from a second cluster
 
 
 def test_a_giant_stain_cluster_scores_badly_on_cohesion_and_criticality():
@@ -57,63 +63,44 @@ def test_a_giant_stain_cluster_scores_badly_on_cohesion_and_criticality():
 
     metrics = compute_isa_metrics(clusters, crud_matrix, process_types)
 
-    assert metrics["LCOISF"] == 0.0  # Order and Campaign share no common process
-    assert metrics["CPSMF"] == 0.5   # the end_to_end process is stranded in a critical cluster
-    assert metrics["DIIEF"] == 1.0   # each entity is still only touched from this one cluster
+    # The cluster's two processes touch two DIFFERENT entity-sets ({Order}
+    # and {Campaign}) -- #LCOIS1=2. LCOISF = 1 - 2/(1 cluster*2 procs*2 ents)
+    # = 1 - 2/4 = 0.5: this tiny example is small enough that the metric's
+    # usual near-1.0 saturation (see compute_isa_metrics docstring) doesn't
+    # hide the cohesion problem.
+    assert metrics["LCOISF"] == 0.5
+    # Vasconcelos et al.: a cluster mixing critical and non-critical processes
+    # penalises EVERY process in it, not just the minority type -- both
+    # processes here count as mismatched.
+    assert metrics["CPSMF"] == 0.0
 
 
 def test_empty_clusters_return_zeroed_metrics_instead_of_crashing():
     assert compute_isa_metrics([], {}, {}) == {
-        "RSF": 0.0, "NAIEF": 0.0, "LCOISF": 0.0, "CPSMF": 0.0, "DIIEF": 0.0,
+        "RSF": 0.0, "NAIEF": 0.0, "LCOISF": 0.0, "CPSMF": 0.0,
     }
 
 
-def test_pure_reader_with_no_cluster_still_lowers_diief():
+def test_naief_counts_an_unaffiliated_writer_as_its_own_source():
     """
-    Real bug found live: since a pure reader (zero C/U/D) is never a
-    cluster member (see _assign_process_membership), the old code only
-    ever examined a process's row via `for p in c.processes` -- so a
-    reader crossing two clusters was invisible to DIIEF, scoring a
-    perfect 1.0 even though the entities are genuinely accessed from
-    outside their own cluster. "Pure Reader" here is deliberately left
-    out of both clusters' `processes`, matching what the real pipeline
-    now produces for it.
+    A pure reader is never a cluster member (see _assign_process_membership),
+    but a process that WRITES an entity without being anyone's formal member
+    (edge case, not the common path, but the code must not silently drop it)
+    still needs to count as a real, separate write source for NAIEF -- it
+    isn't shielded from the "single source of truth" check just because BSP
+    didn't assign it to a cluster.
     """
     crud_matrix = {
-        "Create Order":   {"Order": "C"},
-        "Create Invoice": {"Invoice": "C"},
-        "Pure Reader":    {"Order": "R", "Invoice": "R"},
+        "Create Order":     {"Order": "C"},
+        "Patch Order Directly": {"Order": "U"},
     }
     process_types = {p: "atomic" for p in crud_matrix}
     clusters = [
         Cluster(id=1, name="Order", processes=["Create Order"], entities=["Order"]),
-        Cluster(id=2, name="Invoice", processes=["Create Invoice"], entities=["Invoice"]),
     ]
 
     metrics = compute_isa_metrics(clusters, crud_matrix, process_types)
 
-    # Order: touched by cluster 1 (Create Order) + an unaffiliated reader = 2
-    # sources. Same for Invoice. DIIEF = 2 entities / (2 + 2) = 0.5.
-    assert metrics["DIIEF"] == 0.5
-
-
-def test_pure_reader_with_no_cluster_still_raises_lcoisf():
-    """
-    Same root cause, opposite direction: a pure reader can be the ONLY
-    real evidence that two entities in someone else's cluster belong
-    together, but LCOISF's cohesion check used to only look at formal
-    cluster members (`c.processes`), missing it entirely.
-    """
-    crud_matrix = {
-        "Create A":   {"A": "C"},
-        "Create B":   {"B": "C"},
-        "Reads Both": {"A": "R", "B": "R"},
-    }
-    process_types = {p: "atomic" for p in crud_matrix}
-    clusters = [
-        Cluster(id=1, name="A/B", processes=["Create A", "Create B"], entities=["A", "B"]),
-    ]
-
-    metrics = compute_isa_metrics(clusters, crud_matrix, process_types)
-
-    assert metrics["LCOISF"] == 1.0
+    # Order is written by cluster 1 (Create Order) AND by the unaffiliated
+    # "Patch Order Directly" -- 2 distinct write sources for 1 entity.
+    assert metrics["NAIEF"] == 0.5

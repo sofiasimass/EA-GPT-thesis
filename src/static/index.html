@@ -131,6 +131,20 @@ body {
 }
 .header-title { font-size: 15px; font-weight: 600; }
 .header-sub { font-size: 12px; color: var(--text2); margin-left: auto; }
+.print-chat-btn {
+  padding: 6px 12px;
+  border-radius: var(--rs);
+  border: 1px solid var(--border);
+  background: var(--bg3);
+  color: var(--text2);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  flex: 0 0 auto;
+  transition: border-color .15s, color .15s;
+}
+.print-chat-btn:hover { border-color: var(--accent); color: var(--accent); }
 
 /* Messages */
 .msgs {
@@ -258,6 +272,25 @@ body {
   text-transform: uppercase;
 }
 .card-body { padding: 14px; }
+
+.export-png-btn {
+  margin-left: auto;
+  padding: 5px 10px;
+  border-radius: var(--rs);
+  border: 1px solid var(--border);
+  background: var(--bg3);
+  color: var(--text2);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: normal;
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color .15s, color .15s;
+  flex: 0 0 auto;
+}
+.export-png-btn:hover  { border-color: var(--accent); color: var(--accent); }
+.export-png-btn:disabled { opacity: .5; cursor: default; }
 
 .matrix-scroll { overflow-x: auto; }
 .mtable {
@@ -1102,6 +1135,24 @@ body {
 /* misc */
 .hidden { display: none !important; }
 svg { display: block; }
+
+/* ────── Export the whole conversation (window.print → "Save as PDF") ──────
+   #screen-chat/.msgs are normally locked to the viewport height with their
+   own internal scrollbar; print needs the opposite — let the page grow to
+   fit every card, since a browser paginates a print naturally on its own.
+   Keeps the existing dark palette rather than forcing a light one — modern
+   "Save as PDF" dialogs default to including background colours (Chrome's
+   "background graphics" toggle), so this reads fine as-is; the reader can
+   turn that off in the print dialog if they'd rather save ink/toner. */
+@media print {
+  #screen-chat { height: auto; }
+  .msgs { overflow: visible; flex: none; height: auto; }
+  .matrix-scroll { overflow: visible; }
+  .print-chat-btn, .input-area, .export-png-btn, .info-btn, .choices, .mloader-wrap {
+    display: none !important;
+  }
+  .qcard, .done-card, .err-card, .dq-warn-card { break-inside: avoid; }
+}
 </style>
 </head>
 <body>
@@ -1128,6 +1179,7 @@ svg { display: block; }
     <div class="header-icon">⬡</div>
     <span class="header-title">EA-GPT</span>
     <span class="header-sub">Information Systems Architecture</span>
+    <button class="print-chat-btn" type="button" title="Export the whole conversation as a PDF" onclick="window.print()">🖨 Export PDF</button>
   </div>
 
   <div class="msgs" id="msgs">
@@ -1499,7 +1551,36 @@ function appendCrudMatrix(msg) {
   stopLoader();
   const wrap = document.createElement('div');
   wrap.className = 'card';
-  wrap.innerHTML = `<div class="card-head">⬛ CRUD Matrix — ${msg.processes.length} processes × ${msg.entities.length} entities</div>`;
+  const head = document.createElement('div');
+  head.className = 'card-head';
+  const headTitle = document.createElement('span');
+  headTitle.textContent = `⬛ CRUD Matrix — ${msg.processes.length} processes × ${msg.entities.length} entities`;
+  head.appendChild(headTitle);
+  if (msg.extraction_attempts && msg.extraction_attempts.length) {
+    const infoBtn = document.createElement('button');
+    infoBtn.className = 'info-btn';
+    infoBtn.type = 'button';
+    infoBtn.textContent = 'i';
+    infoBtn.title = 'Show extraction retry history';
+    infoBtn.onclick = () => openExtractionModal(msg.extraction_attempts);
+    head.appendChild(infoBtn);
+  }
+  head.appendChild(makeExportPngButton(() => ({
+    title: `CRUD Matrix — ${msg.processes.length} processes × ${msg.entities.length} entities`,
+    legendItems: [
+      { color: OP_COLORS.C, label: 'Create' },
+      { color: OP_COLORS.R, label: 'Read' },
+      { color: OP_COLORS.U, label: 'Update' },
+      { color: OP_COLORS.D, label: 'Delete' },
+    ],
+    processes: msg.processes,
+    entities: msg.entities,
+    data: msg.data,
+    procCluster: null,
+    entCluster: null,
+    spanIndices: null,
+  }), 'crud-matrix'));
+  wrap.appendChild(head);
   const body = document.createElement('div');
   body.className = 'card-body';
   body.appendChild(buildMatrixTable(msg.processes, msg.entities, msg.data, null, null));
@@ -1661,7 +1742,24 @@ function appendClustering(msg) {
   // Header
   const head = document.createElement('div');
   head.className = 'card-head';
-  head.textContent = `⬡ ${msg.title} — ${msg.clusters.length} cluster(s)`;
+  const headTitle = document.createElement('span');
+  headTitle.textContent = `⬡ ${msg.title} — ${msg.clusters.length} cluster(s)`;
+  head.appendChild(headTitle);
+  head.appendChild(makeExportPngButton(() => {
+    const { sortedProcs, sortedEnts, procCluster, entCluster, spanIndices } =
+      computeClusterLayout(msg.matrix, msg.clusters, msg.process_span);
+    return {
+      title: `${msg.title} — ${msg.clusters.length} cluster(s)`,
+      legendItems: msg.clusters.map((c, i) => ({
+        color: CLUSTER_COLORS[i % CLUSTER_COLORS.length],
+        label: `Cluster ${c.id}: ${c.name}`,
+      })),
+      processes: sortedProcs,
+      entities: sortedEnts,
+      data: msg.matrix.data,
+      procCluster, entCluster, spanIndices,
+    };
+  }, msg.title));
   wrap.appendChild(head);
 
   // If this clustering is the result of applying EA principles alone
@@ -1669,17 +1767,10 @@ function appendClustering(msg) {
   // the "Applying EA principles…" status row above so the architect can
   // see exactly what changed, without cluttering the card itself.
   if (msg.principles_detail) {
-    const markerRow = markerStatusRows['principles'];
-    const statusSpan = markerRow && markerRow.querySelector('.status-row > span');
-    if (statusSpan && !statusSpan.querySelector('.info-btn')) {
-      const infoBtn = document.createElement('button');
-      infoBtn.className = 'info-btn';
-      infoBtn.type = 'button';
-      infoBtn.textContent = 'i';
-      infoBtn.title = 'What did the EA principles change?';
-      infoBtn.onclick = () => openPrinciplesModal(msg.principles_detail);
-      statusSpan.appendChild(infoBtn);
-    }
+    attachDetailInfoButton('principles', 'What did the EA principles change?', () => openPrinciplesModal(msg.principles_detail));
+  }
+  if (msg.constraint_detail) {
+    attachDetailInfoButton(`constraint-${msg.iteration}`, 'What did this constraint change?', () => openConstraintModal(msg.constraint_detail));
   }
 
   // ISA quality metrics for this iteration — lets the architect judge "am I satisfied?"
@@ -1792,7 +1883,36 @@ function buildWeightList(weights) {
   }).join('');
 }
 
+// Attaches an "i" button to a status row identified by `marker` (set server-side
+// via the status message's own `marker` field) — used for both the one-off
+// "Applying EA principles…" row and each constraint iteration's own
+// "Analysing constraints…" row, one button per marker, never duplicated.
+function attachDetailInfoButton(marker, tooltip, onClick) {
+  const markerRow = markerStatusRows[marker];
+  const statusSpan = markerRow && markerRow.querySelector('.status-row > span');
+  if (statusSpan && !statusSpan.querySelector('.info-btn')) {
+    const infoBtn = document.createElement('button');
+    infoBtn.className = 'info-btn';
+    infoBtn.type = 'button';
+    infoBtn.textContent = 'i';
+    infoBtn.title = tooltip;
+    infoBtn.onclick = onClick;
+    statusSpan.appendChild(infoBtn);
+  }
+}
+
 function openPrinciplesModal(detail) {
+  openWeightChangeModal('What the EA principles changed', detail, 'No process changed cluster after applying the principles.');
+}
+
+function openConstraintModal(detail) {
+  const title = detail.user_constraint
+    ? `What this constraint changed — "${detail.user_constraint}"`
+    : 'What this constraint changed';
+  openWeightChangeModal(title, detail, 'No process changed cluster after applying this constraint.');
+}
+
+function openWeightChangeModal(title, detail, emptyChangesMsg) {
   closeModal();
 
   const overlay = document.createElement('div');
@@ -1811,11 +1931,11 @@ function openPrinciplesModal(detail) {
           <span class="arrow">→</span>
           <em>${escHtml(ch.to_cluster || '—')}</em>
         </div>`).join('')
-    : '<p class="modal-empty">No process changed cluster after applying the principles.</p>';
+    : `<p class="modal-empty">${escHtml(emptyChangesMsg)}</p>`;
 
   box.innerHTML = `
     <div class="modal-head">
-      <h3>What the EA principles changed</h3>
+      <h3>${escHtml(title)}</h3>
       <button class="modal-close" type="button" title="Close">×</button>
     </div>
     <div class="modal-body">
@@ -1825,6 +1945,49 @@ function openPrinciplesModal(detail) {
       ${buildWeightList(detail.entity_weights)}
       <h4>Cluster membership changes</h4>
       ${changesHtml}
+    </div>`;
+
+  box.querySelector('.modal-close').onclick = closeModal;
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  document.addEventListener('keydown', closeModalOnEsc);
+}
+
+function openExtractionModal(attempts) {
+  closeModal();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.onclick = (e) => { if (e.target === overlay) closeModal(); };
+
+  const box = document.createElement('div');
+  box.className = 'modal-box';
+
+  const list = attempts && attempts.length ? attempts : [];
+  const attemptsHtml = list.length
+    ? list.map(a => `
+        <div class="change-item">
+          <strong>Attempt ${a.attempt}</strong>
+          ${a.issues && a.issues.length
+            ? `<ul class="unallocated-list">${a.issues.map(i => `<li>${escHtml(i)}</li>`).join('')}</ul>`
+            : '<p class="modal-empty">All checks passed.</p>'}
+        </div>`).join('')
+    : '<p class="modal-empty">No retry was needed — the first attempt passed every check.</p>';
+
+  const bestIdx = list.reduce((best, a, i) =>
+    (a.issues || []).length < (list[best].issues || []).length ? i : best, 0);
+  const summary = list.length <= 1
+    ? ''
+    : `<p class="modal-empty">Kept attempt ${list[bestIdx].attempt}'s result — the fewest remaining issues (${(list[bestIdx].issues || []).length}) of the ${list.length} tried.</p>`;
+
+  box.innerHTML = `
+    <div class="modal-head">
+      <h3>Extraction retry history</h3>
+      <button class="modal-close" type="button" title="Close">×</button>
+    </div>
+    <div class="modal-body">
+      ${attemptsHtml}
+      ${summary}
     </div>`;
 
   box.querySelector('.modal-close').onclick = closeModal;
@@ -2056,6 +2219,240 @@ function hexToRgba(hex, alpha) {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
+function slugify(str) {
+  return str.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'export';
+}
+
+// PNG export draws the matrix straight onto a <canvas> from the same data
+// buildMatrixTable uses, instead of rasterizing the live DOM. Tried the usual
+// dependency-free "SVG <foreignObject> → Image → canvas" trick first, but
+// Chromium unconditionally taints any canvas drawn from an SVG image that
+// contains a foreignObject — canvas.toBlob()/toDataURL() then throws
+// SecurityError even for same-origin, no-external-resource content. That's
+// documented Chromium behaviour (not fixable via crossOrigin attributes or
+// CORS), so on Chrome/Edge the button did nothing. Drawing directly with the
+// Canvas 2D API sidesteps it entirely — no image is ever loaded.
+const EXPORT_FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif";
+
+function exportWrapText(ctx, text, maxWidth) {
+  const words = text.split(' ');
+  const lines = [];
+  let line = '';
+  for (const word of words) {
+    const test = line ? line + ' ' + word : word;
+    if (line && ctx.measureText(test).width > maxWidth) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = test;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+// spec: { title, legendItems: [{color,label}], processes, entities, data,
+//         procCluster, entCluster, spanIndices }  — procCluster/entCluster/
+// spanIndices are null for the plain (unclustered) CRUD matrix.
+function renderMatrixToCanvas(spec) {
+  const scale = 2; // export at 2x for a crisp figure in the thesis document
+  const pad = 20, cellW = 30, cellH = 26, cellGap = 3, rowHeaderMaxW = 260;
+
+  const root = getComputedStyle(document.documentElement);
+  const bg     = root.getPropertyValue('--bg2').trim();
+  const text1  = root.getPropertyValue('--text').trim();
+  const text2  = root.getPropertyValue('--text2').trim();
+  const text3  = root.getPropertyValue('--text3').trim();
+
+  const meas = document.createElement('canvas').getContext('2d');
+
+  meas.font = `500 12px ${EXPORT_FONT}`;
+  const rowHeaderW = Math.min(
+    rowHeaderMaxW,
+    Math.max(80, ...spec.processes.map(p => meas.measureText(p).width + 14))
+  );
+  const procLines = {};
+  let maxProcLines = 1;
+  spec.processes.forEach(p => {
+    const lines = exportWrapText(meas, p, rowHeaderW - 14);
+    procLines[p] = lines;
+    maxProcLines = Math.max(maxProcLines, lines.length);
+  });
+  const rowH = Math.max(cellH, maxProcLines * 15 + 8);
+
+  meas.font = `500 10px ${EXPORT_FONT}`;
+  const maxEntTextW = Math.max(30, ...spec.entities.map(e => meas.measureText(e).width));
+  const colHeadH = Math.min(180, maxEntTextW + 24);
+
+  meas.font = `600 11px ${EXPORT_FONT}`;
+  const legendItems = spec.legendItems || [];
+  const legendMaxW = Math.max(500, spec.entities.length * (cellW + cellGap) + rowHeaderW);
+  const legendRows = [];
+  let lRow = [], lRowW = 0;
+  legendItems.forEach(item => {
+    const itemW = 18 + meas.measureText(item.label).width + 22;
+    if (lRow.length && lRowW + itemW > legendMaxW) { legendRows.push(lRow); lRow = []; lRowW = 0; }
+    lRow.push(item);
+    lRowW += itemW;
+  });
+  if (lRow.length) legendRows.push(lRow);
+  const legendH = legendRows.length ? legendRows.length * 22 + 10 : 0;
+
+  const tableW = rowHeaderW + spec.entities.length * (cellW + cellGap);
+  const tableH = colHeadH + spec.processes.length * (rowH + cellGap);
+  const titleH = 30;
+  const w = pad * 2 + tableW;
+  const h = pad * 2 + titleH + legendH + tableH;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.ceil(w * scale));
+  canvas.height = Math.max(1, Math.ceil(h * scale));
+  const ctx = canvas.getContext('2d');
+  ctx.scale(scale, scale);
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, w, h);
+
+  let y = pad;
+  ctx.fillStyle = text1;
+  ctx.font = `700 14px ${EXPORT_FONT}`;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText(spec.title, pad, y);
+  y += titleH;
+
+  if (legendRows.length) {
+    meas.font = `500 11px ${EXPORT_FONT}`;
+    legendRows.forEach(row => {
+      let x = pad;
+      row.forEach(item => {
+        ctx.fillStyle = item.color;
+        ctx.fillRect(x, y + 5, 12, 12);
+        ctx.fillStyle = text2;
+        ctx.font = `500 11px ${EXPORT_FONT}`;
+        ctx.textBaseline = 'middle';
+        ctx.fillText(item.label, x + 18, y + 11);
+        x += 18 + meas.measureText(item.label).width + 22;
+      });
+      y += 22;
+    });
+    y += 10;
+  }
+
+  const tableX = pad, tableY = y;
+
+  spec.entities.forEach((e, ci) => {
+    const cx = tableX + rowHeaderW + ci * (cellW + cellGap) + cellW / 2;
+    const col = (spec.entCluster && spec.entCluster[e] !== undefined)
+      ? CLUSTER_COLORS[spec.entCluster[e] % CLUSTER_COLORS.length] : text3;
+    ctx.save();
+    ctx.translate(cx, tableY + colHeadH - 8);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillStyle = col;
+    ctx.font = `500 10px ${EXPORT_FONT}`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(e, 0, 0);
+    ctx.restore();
+  });
+
+  let ry = tableY + colHeadH;
+  spec.processes.forEach(p => {
+    const pci = spec.procCluster ? (spec.procCluster[p] ?? -1) : -1;
+
+    ctx.fillStyle = pci >= 0 ? CLUSTER_COLORS[pci % CLUSTER_COLORS.length] : text2;
+    ctx.font = `500 12px ${EXPORT_FONT}`;
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    const lines = procLines[p];
+    const lineH = 15;
+    const startY = ry + rowH / 2 - ((lines.length - 1) * lineH) / 2;
+    lines.forEach((line, li) => ctx.fillText(line, tableX + rowHeaderW - 10, startY + li * lineH));
+    if (pci >= 0) {
+      ctx.fillStyle = CLUSTER_COLORS[pci % CLUSTER_COLORS.length];
+      ctx.fillRect(tableX + rowHeaderW - 2, ry, 2.5, rowH);
+    }
+
+    spec.entities.forEach((e, ci) => {
+      const cx = tableX + rowHeaderW + ci * (cellW + cellGap);
+      const val = (spec.data[e] && spec.data[e][p]) ? String(spec.data[e][p]).toUpperCase() : '';
+      const eci = spec.entCluster ? (spec.entCluster[e] ?? -1) : -1;
+      const inBlock = pci >= 0 && eci >= 0 && pci === eci;
+      const isSpan = !inBlock && isCrudValue(val)
+        && spec.spanIndices && spec.spanIndices[p] && spec.spanIndices[p].has(eci);
+
+      ctx.save();
+      ctx.beginPath();
+      const r = 5;
+      ctx.moveTo(cx + r, ry);
+      ctx.arcTo(cx + cellW, ry, cx + cellW, ry + rowH, r);
+      ctx.arcTo(cx + cellW, ry + rowH, cx, ry + rowH, r);
+      ctx.arcTo(cx, ry + rowH, cx, ry, r);
+      ctx.arcTo(cx, ry, cx + cellW, ry, r);
+      ctx.closePath();
+
+      if (inBlock || isSpan) {
+        const col = inBlock ? CLUSTER_COLORS[pci % CLUSTER_COLORS.length] : CLUSTER_COLORS[eci % CLUSTER_COLORS.length];
+        ctx.fillStyle = hexToRgba(col, val ? (inBlock ? 0.28 : 0.18) : 0.10);
+        ctx.fill();
+        if (isCrudValue(val)) {
+          ctx.fillStyle = dominantOpColor(val);
+          ctx.font = `700 11px ${EXPORT_FONT}`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(val, cx + cellW / 2, ry + rowH / 2);
+        }
+      } else if (isCrudValue(val)) {
+        const col = dominantOpColor(val);
+        ctx.fillStyle = hexToRgba(col, 0.18);
+        ctx.fill();
+        ctx.globalAlpha = 0.5;
+        ctx.fillStyle = col;
+        ctx.font = `700 11px ${EXPORT_FONT}`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(val, cx + cellW / 2, ry + rowH / 2);
+      }
+      ctx.restore();
+    });
+
+    ry += rowH + cellGap;
+  });
+
+  return canvas;
+}
+
+function downloadCanvasPng(canvas, filenameBase) {
+  canvas.toBlob(blob => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${slugify(filenameBase)}-${Date.now()}.png`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(a.href);
+  }, 'image/png');
+}
+
+// buildSpec: () => spec — called lazily on click, not up front, since some
+// callers (e.g. the clustered matrix) need computeClusterLayout re-derived
+// from the message rather than captured once at render time.
+function makeExportPngButton(buildSpec, filenameBase) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'export-png-btn';
+  btn.textContent = '⭳ PNG';
+  btn.title = 'Export this matrix as a PNG image';
+  btn.onclick = () => {
+    try {
+      downloadCanvasPng(renderMatrixToCanvas(buildSpec()), filenameBase);
+    } catch (err) {
+      console.error('PNG export failed', err);
+      alert('PNG export failed — see browser console for details.');
+    }
+  };
+  return btn;
+}
+
 // procCluster: { processName → clusterIdx } — null for the plain CRUD matrix
 // entCluster:  { entityName  → clusterIdx } — null for the plain CRUD matrix
 function buildMatrixTable(processes, entities, data, procCluster, entCluster, spanIndices) {
@@ -2164,7 +2561,9 @@ function buildMatrixTable(processes, entities, data, procCluster, entCluster, sp
   return scroll;
 }
 
-function buildClusteredMatrix(matrixMsg, clusters, processSpan) {
+// Shared by buildClusteredMatrix (DOM table) and the PNG canvas exporter, so
+// the two never drift apart on how processes/entities get sorted into blocks.
+function computeClusterLayout(matrixMsg, clusters, processSpan) {
   // Re-sort processes and entities strictly by cluster → diagonal blocks
   const procSet = new Set(matrixMsg.processes);
   const entSet  = new Set(matrixMsg.entities);
@@ -2196,6 +2595,12 @@ function buildClusteredMatrix(matrixMsg, clusters, processSpan) {
     });
   }
 
+  return { sortedProcs, sortedEnts, procCluster, entCluster, spanIndices };
+}
+
+function buildClusteredMatrix(matrixMsg, clusters, processSpan) {
+  const { sortedProcs, sortedEnts, procCluster, entCluster, spanIndices } =
+    computeClusterLayout(matrixMsg, clusters, processSpan);
   return buildMatrixTable(sortedProcs, sortedEnts, matrixMsg.data, procCluster, entCluster, spanIndices);
 }
 
@@ -2369,7 +2774,6 @@ const METRIC_LEGEND = [
   { key: 'NAIEF',  label: 'Number of Applications for Information Entity Factor', desc: 'How many applications manage (Create/Update/Delete) each data entity. Ideal = 1.0 — a single application is the authoritative source of truth for each entity.' },
   { key: 'LCOISF', label: 'Lack of Cohesion in IS Block Factor',               desc: 'Internal cohesion of each cluster, measured as the fraction of entity pairs that share at least one common process. Ideal = 1.0 — no "giant-stain" clusters aggregating unrelated functions.' },
   { key: 'CPSMF',  label: 'Critical Process – System Mismatch Factor',         desc: 'Degree to which atomic (critical) and end-to-end (non-critical) processes are isolated in separate systems. Ideal = 1.0 — critical processes are never mixed with non-critical ones.' },
-  { key: 'DIIEF',  label: 'Different Implementations of Information Entity Factor', desc: 'Measures data-storage redundancy: how many systems store or access each entity. Ideal = 1.0 — each entity exists in exactly one location, with no duplication across systems.' },
 ];
 
 // Shared by the standalone isa_metrics_comparison card and (formerly) the gap-analysis card.

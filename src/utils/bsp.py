@@ -1069,17 +1069,41 @@ def compute_isa_metrics(
     process_types: Dict[str, str],
 ) -> Dict[str, float]:
     """
-    Computes ISA quality metrics (Vasconcelos et al.) for a given clustering.
-    All metrics in [0, 1]; higher is better.
+    Computes ISA quality metrics (Vasconcelos, Sousa & Tribolet, 2008,
+    "Enterprise Architecture Analysis: An Information System Evaluation
+    Approach") for a given clustering. All 4 metrics reported are literal
+    implementations of that paper's formulas (no adapted or invented
+    metrics) — see each entry below for how the paper's IS Block / IS
+    Service / IS Operation vocabulary maps onto this tool's simpler
+    process/entity/cluster model. All metrics in [0, 1]; higher is better.
 
-    RSF   : Average IS blocks per process — 1 = every process lives in exactly one system
-    NAIEF : Entity write responsibility — 1 = single source of truth per entity (CUD in one cluster)
-    LCOISF: Cluster cohesion — 1 = every entity pair in a cluster shares at least one common process
-    CPSMF : Critical/non-critical isolation — 1 = atomic and E2E processes never share a cluster
-    DIIEF : Data access uniqueness — 1 = each entity is touched by processes in only one cluster
+    RSF   : Average IS blocks per process — 1 = every process lives in exactly one
+            system. Matches the paper's formula exactly: #services / Σ(#IS Blocks
+            per service) — here "service" = "process", the paper's Business
+            Service / IS Service distinction collapses to one concept.
+    NAIEF : Entity write responsibility — 1 = single source of truth per entity
+            (CUD in one cluster). Matches the paper's formula exactly.
+    LCOISF: Cluster cohesion — 1 = an IS Block's own operations mostly agree on
+            which entities they touch. Literal implementation of the paper's
+            formula: LCOISF = 1 - Σ#LCOISi / (#ISBlock × #ISOperation ×
+            #InformationEntity), where #LCOISi is the number of DISTINCT
+            entity-sets touched by IS Block i's own operations (here: distinct
+            sets of entities touched, across a cluster's member processes,
+            grouping processes that touch the exact same set together) and
+            #ISOperation is the total process count across the whole ISA. By
+            construction (a 3-way product denominator against a numerator that
+            grows far more slowly) this saturates close to 1.0 for almost any
+            reasonably-organised real system — confirmed against the paper's
+            own worked example (0.99 and 1.00 for two genuinely different
+            Citizen Card architectures) — so treat differences in the 3rd
+            decimal place as meaningful, not differences at a glance.
+    CPSMF : Critical/non-critical isolation — 1 = atomic and E2E processes never
+            share a cluster. Matches the paper's formula exactly: a cluster
+            mixing critical and non-critical processes penalises EVERY process
+            in it, not just whichever type is the minority there.
     """
     if not crud_matrix or not clusters:
-        return {"RSF": 0.0, "NAIEF": 0.0, "LCOISF": 0.0, "CPSMF": 0.0, "DIIEF": 0.0}
+        return {"RSF": 0.0, "NAIEF": 0.0, "LCOISF": 0.0, "CPSMF": 0.0}
 
     df = pd.DataFrame(crud_matrix).T
     all_procs = list(df.index)
@@ -1091,24 +1115,20 @@ def compute_isa_metrics(
             if p in proc_cluster_ids:
                 proc_cluster_ids[p].add(c.id)
 
-    # De onde é que cada entidade é tocada — não só pelos processos que são
-    # membros formais de algum cluster. Um processo puramente leitor nunca
-    # é membro de nenhum cluster (ver _assign_process_membership), mas
-    # continua a ser um acesso real aos dados; ignorá-lo escondia leituras
-    # cruzadas genuínas destas métricas. Para um processo sem cluster, cada
+    # De onde é que cada entidade é escrita (C/U/D) — não só pelos processos
+    # que são membros formais de algum cluster. Um processo puramente leitor
+    # nunca é membro de nenhum cluster (ver _assign_process_membership), mas
+    # continua a ser um acesso real aos dados; ignorá-lo escondia escritas
+    # cruzadas genuínas desta métrica. Para um processo sem cluster, cada
     # entidade que toca ganha uma origem própria e única (o nome do
     # processo) em vez de um id de cluster — continua a contar como mais
     # um sítio de acesso, mesmo sem pertencer formalmente a um sistema.
     ent_cud_clusters: Dict[str, Set] = {e: set() for e in all_ents}
-    ent_any_clusters: Dict[str, Set] = {e: set() for e in all_ents}
     for p in all_procs:
         sources = proc_cluster_ids[p] or {f"unaffiliated:{p}"}
         for e in all_ents:
-            w = _op_weight(df.at[p, e])
-            if w > _OP_PRIORITY["R"]:
+            if _op_weight(df.at[p, e]) > _OP_PRIORITY["R"]:
                 ent_cud_clusters[e].update(sources)
-            if w > 0:
-                ent_any_clusters[e].update(sources)
 
     # RSF: total processes / sum of cluster-spans per process (ideal = 1)
     total_spans = sum(max(1, len(v)) for v in proc_cluster_ids.values())
@@ -1118,59 +1138,45 @@ def compute_isa_metrics(
     total_cud = sum(max(1, len(v)) for v in ent_cud_clusters.values())
     naief = len(all_ents) / total_cud if total_cud else 1.0
 
-    # LCOISF: for each cluster, fraction of entity pairs that share at least one process.
-    # Uses every process in the matrix, not just this cluster's formal
-    # members -- a pure reader with no cluster of its own can still be the
-    # only real evidence that two entities in someone else's cluster are
-    # used together, and that's exactly the signal LCOISF is meant to
-    # capture (confirmed live: a reader touching both entities of a
-    # cluster, with no other process linking them, scored LCOISF 0.0
-    # instead of 1.0 when restricted to formal members).
-    cohesion_vals = []
+    # LCOISF: literal Vasconcelos et al. formula. Per cluster, group its own
+    # member processes by the exact set of entities each one touches (any
+    # C/R/U/D); #LCOISi is how many DISTINCT such entity-sets appear among
+    # that cluster's processes -- 1 if they all agree on the same footprint
+    # (maximally cohesive), higher the more the cluster's processes scatter
+    # across unrelated entity combinations.
+    lcois_per_cluster = []
     for c in clusters:
-        procs_in = all_procs
-        ents_in  = [e for e in c.entities  if e in df.columns]
-        if len(ents_in) < 2:
-            cohesion_vals.append(1.0)
-            continue
-        connected = total_ep = 0
-        for i_e, e1 in enumerate(ents_in):
-            for e2 in ents_in[i_e + 1:]:
-                total_ep += 1
-                if any(
-                    _op_weight(df.at[p, e1]) > 0 and _op_weight(df.at[p, e2]) > 0
-                    for p in procs_in
-                ):
-                    connected += 1
-        cohesion_vals.append(connected / total_ep if total_ep else 1.0)
-    lcoisf = sum(cohesion_vals) / len(cohesion_vals) if cohesion_vals else 1.0
+        entity_sets_seen = set()
+        for p in c.processes:
+            touched = frozenset(e for e in all_ents if _op_weight(df.at[p, e]) > 0)
+            entity_sets_seen.add(touched)
+        lcois_per_cluster.append(len(entity_sets_seen))
+    total_lcois = sum(lcois_per_cluster)
+    lcoisf_denom = len(clusters) * len(all_procs) * len(all_ents)
+    lcoisf = 1.0 - (total_lcois / lcoisf_denom) if lcoisf_denom else 1.0
 
-    # CPSMF: isolation of atomic (critical) vs end_to_end (non-critical) processes
+    # CPSMF: isolation of atomic (critical) vs end_to_end (non-critical) processes.
+    # Matches Vasconcelos et al. (2008) literally: CPSMF = 1 - (#{critical
+    # processes in a cluster that ALSO holds a non-critical process} +
+    # #{non-critical processes in a cluster that ALSO holds a critical
+    # process}) / #processes. A cluster mixing both types penalises EVERY
+    # process in it, not just whichever type is the minority there.
     def _is_critical(p: str) -> bool:
         return process_types.get(p, "atomic") in ("atomic", "ambiguous")
 
-    def _is_critical_cluster(c: Cluster) -> bool:
-        if not c.processes:
-            return True
-        return sum(1 for p in c.processes if _is_critical(p)) >= len(c.processes) / 2
-
-    mismatch = sum(
-        1 for c in clusters
-        for p in c.processes
-        if _is_critical(p) != _is_critical_cluster(c)
-    )
+    mismatch = 0
+    for c in clusters:
+        has_critical = any(_is_critical(p) for p in c.processes)
+        has_noncritical = any(not _is_critical(p) for p in c.processes)
+        if has_critical and has_noncritical:
+            mismatch += len(c.processes)
     cpsmf = 1.0 - (mismatch / len(all_procs)) if all_procs else 1.0
-
-    # DIIEF: total entities / sum of any-operation-cluster-spans per entity (ideal = 1)
-    total_any = sum(max(1, len(v)) for v in ent_any_clusters.values())
-    diief = len(all_ents) / total_any if total_any else 1.0
 
     return {
         "RSF":    round(rsf,    3),
         "NAIEF":  round(naief,  3),
         "LCOISF": round(lcoisf, 3),
         "CPSMF":  round(cpsmf,  3),
-        "DIIEF":  round(diief,  3),
     }
 
 
