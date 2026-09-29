@@ -54,6 +54,19 @@ orchestrates two kinds of components:
 
 ![EA-GPT architecture (ArchiMate)](docs/images/architecture.png)
 
+> **Note: As-Is vs. To-Be comparison.** The prototype also includes an optional As-Is
+> comparison feature, which is outside the scope of the thesis and so does not appear in
+> the diagrams above. The architect can upload the organisation's current application
+> landscape as its own CRUD matrix, with systems already assigned. EA-GPT computes the ISA
+> quality metrics for both the current (As-Is) and the generated (To-Be) architecture, and
+> the LLM compares the two at system level to produce a gap analysis and a migration plan.
+>
+> This feature is exploratory and has several limitations. It was not part of the thesis
+> evaluation, so its results have not been validated. The match between As-Is and To-Be
+> systems relies entirely on the LLM's judgement, and the As-Is matrix has to be prepared
+> by hand in the expected format. Its output should be treated as a starting point for
+> discussion, not as a finished migration plan.
+
 ### Code structure
 
 ```
