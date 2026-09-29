@@ -120,9 +120,9 @@ Then open http://localhost:8080 in your browser.
 - **Process list**: comma-separated text, or a `.csv` with one process name per row.
 - **Context document** (optional): a `.pdf` or `.txt` file, or pasted text. Without it, the
   LLM relies on its general knowledge of each process.
-- **As-Is CRUD matrix** (optional, for an As-Is vs. To-Be comparison): a `.csv` with the
-  columns `Process,Entity,Operation,System,ProcessType`, where `Operation` is one of
-  `C/R/U/D` and `ProcessType` is one of `atomic/end_to_end/ambiguous`.
+- **As-Is landscape** (optional, for an As-Is vs. To-Be comparison): a `.csv` with the
+  columns `Process,Entity,System`, one row per process, entity it touches and current
+  application. No CRUD operations are needed; process types are reused from the extraction.
 
 ### Tests
 

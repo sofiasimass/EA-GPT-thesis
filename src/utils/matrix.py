@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 from typing import List, Literal, Optional
 import pandas as pd
 
-# --- Structured Output ---
+# ---- LLM extraction output schema (descriptions and the MatrixResult docstring are part of the prompt) ----
 
 class ProcessSchema(BaseModel):
     name: str = Field(
@@ -82,6 +82,8 @@ class MatrixResult(BaseModel):
     )
 
 
+# ---- in-memory CRUD matrix ----
+
 class Entity:
     def __init__(self, name: str):
         self.name = name
@@ -90,6 +92,7 @@ class Process:
     def __init__(self, name: str):
         self.name = name
 
+# CRUD matrix built from the extraction: { process: { entity: "CRU" } } plus each process's type
 class Matrix:
     def __init__(self):
         self.matrix = {} # { "Process Name": { "Entity Name": "C" } }
@@ -100,8 +103,8 @@ class Matrix:
     def set_process_type(self, p_name: str, p_type: str):
         self.process_types[p_name] = p_type
 
+    # Adds one CRUD operation to a cell
     def add_entry(self, p_name: str, e_name: str, operation: str):
-        # Ensure objects exist (even if just created from the LLM string)
         if p_name not in self.process_objects:
             self.process_objects[p_name] = Process(p_name)
         if e_name not in self.entity_objects:
@@ -110,16 +113,13 @@ class Matrix:
         if p_name not in self.matrix:
             self.matrix[p_name] = {}
 
-        # The LLM emits one entry per operation type, so the same (process, entity)
-        # pair can arrive here multiple times (e.g. C, then R, then U on the same
-        # entity for a process that fully manages it). Combine into "CRU" instead
-        # of overwriting, so the higher-priority ops don't silently disappear —
-        # bsp.py's _op_weight already expects and handles combined strings like this.
+        # The same cell can receive several operations (C, then U...): combine them into "CU" instead of overwriting
         op = operation.upper()
         existing = self.matrix[p_name].get(e_name, "")
         if op not in existing:
             self.matrix[p_name][e_name] = existing + op
 
+    # Writes the matrix to CSV as a process × entity table
     def export_to_csv(self, filename: str):
         data = []
         for p_name, entities in self.matrix.items():
@@ -132,6 +132,5 @@ class Matrix:
         
         df = pd.DataFrame(data)
         if not df.empty:
-            # This pivot is the first step toward a BSP matrix
             matrix_df = df.pivot(index='Process', columns='Entity', values='Operation')
             matrix_df.to_csv(filename)

@@ -1,47 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-Teste 2 (genérico): alimenta o bsp.py diretamente com uma matriz CRUD real
-(sem passar pela extração da LLM) e compara o clustering do algoritmo —
-(a) estrutural puro, (b) depois de 1 iteração de princípios de EA (1
-chamada LLM) — contra uma clusterização de referência (tipicamente o To-Be
-que os próprios autores do caso definiram).
-
-Pede os ficheiros interativamente, para poder ser reutilizado em qualquer
-caso de estudo, não só o DMHU.
-
-Ficheiro 1 — matriz CRUD a enviar para o bsp.py:
-  .csv ou .xlsx com colunas Process, Entity, Operation (uma linha por
-  operação C/R/U/D; várias linhas por processo/entidade combinam-se numa
-  célula, ex. "CU"). Os tipos de processo vêm do ficheiro 3 (opcional).
-  Se o ficheiro não tiver essas colunas e for .xlsx, tenta-se o formato
-  largo (entidades em colunas, processos em linhas, típico destes
-  trabalhos de EA) como alternativa.
-
-Ficheiro 2 — clusterização de referência, para comparar:
-  .csv ou .xlsx com colunas Process e Cluster ID (um número — 1, 2, 3...).
-  Um processo pode aparecer em várias linhas com Cluster IDs diferentes --
-  fica membro de todos esses clusters, tal como o run_bsp permite a um
-  processo end_to_end pertencer a mais que um cluster. Linhas com Cluster
-  ID em branco são ignoradas (processo não alocado nessa linha), não viram
-  um cluster "vazio" nem quebram as outras linhas desse processo.
-  Coluna Entity é opcional -- se vier no ficheiro (ex. reaproveitando as
-  linhas do ficheiro 1 com uma coluna Cluster ID acrescentada), as
-  entidades de cada cluster vêm diretamente dela; senão são inferidas da
-  matriz do ficheiro 1 (qualquer entidade tocada por algum processo membro
-  desse cluster). Se Entity E Operation vierem os dois, uma linha de
-  ESCRITA (C/U/D) sem Cluster ID gera um aviso na consola (provável
-  esquecimento) -- uma leitura solta sem cluster é normal e fica em
-  silêncio.
-
-Ficheiro 3 (opcional) — tipos de processo:
-  .csv ou .xlsx com colunas Process, ProcessType ("atomic" ou
-  "end_to_end"). Pode ser um ficheiro à parte, ou reaproveitar um já
-  existente com a lista de processos (ex. "group3_processes.csv") só
-  acrescentando-lhe a coluna ProcessType. Não precisa de listar todos os
-  processos -- só os que não são "atomic" (a maioria dos casos reais é
-  "tudo atomic exceto estes N", como o relatório do ALMAFUMO descreve
-  explicitamente). Qualquer processo sem valor nessa coluna, ou se o
-  ficheiro nem for dado (Enter), fica "atomic" por omissão.
+Test 2: runs bsp.py directly on a real CRUD matrix (skipping LLM extraction) and
+compares the clustering with a reference clustering made by people:
+  (a) structural clustering only (no LLM)
+  (b) after one round of EA principles (one LLM call)
+Reports the Rand Index (processes and entities), the ISA metrics, and exports both
+clustered matrices to .xlsx. Input files are asked for interactively:
+  1. CRUD matrix: Process, Entity, Operation (.csv/.xlsx; wide .xlsx also accepted)
+  2. Reference clustering: Process, Cluster ID (optional Entity, Operation)
+  3. Optional process types: Process, ProcessType (unlisted processes are atomic)
 """
 import sys
 import io
@@ -59,9 +26,8 @@ from utils.bsp import run_bsp, compute_isa_metrics, classify_changes
 from utils.generator import Generator
 
 
+# Markdown table: for each BSP cluster, how many of its processes fall in each reference cluster
 def cluster_overlap_table(bsp_clusters, ref_clusters, out):
-    """Um processo em mais que um cluster de referência conta para TODOS
-    eles (rótulo "A + B"), em vez de só o último encontrado ao iterar."""
     ref_membership: dict[str, list] = defaultdict(list)
     for c in ref_clusters:
         for p in c.processes:
@@ -78,10 +44,8 @@ def cluster_overlap_table(bsp_clusters, ref_clusters, out):
         out.write(f"| {c.id} — {c.name} | {len(c.processes)} | {counts_str} |\n")
 
 
+# Exports the reordered matrix with a Cluster column (a process in several clusters lists all)
 def export_matrix_xlsx(bsp_result, out_path):
-    """Matriz reordenada por cluster, com uma coluna 'Cluster' à frente -- sem
-    cor. Um processo em mais que um cluster (end_to_end, ou atomic com
-    override confirmado) mostra os dois, não só o último encontrado."""
     proc_cluster: dict[str, list] = defaultdict(list)
     for c in bsp_result.clusters:
         for p in c.processes:
@@ -91,6 +55,7 @@ def export_matrix_xlsx(bsp_result, out_path):
     df.to_excel(out_path, sheet_name="Matrix")
 
 
+# Runs Test 2 and writes teste2_resultado.md plus the two clustered matrices
 async def main():
     print("=== Teste 2: BSP direto sobre uma matriz real (sem extração LLM) ===\n")
     matrix_path = input("Ficheiro da matriz CRUD (Process,Entity,Operation — .csv ou .xlsx): ").strip().strip('"')
@@ -113,13 +78,13 @@ async def main():
     ref_clusters = load_reference_clusters(ref_path, matrix)
     ref_metrics = compute_isa_metrics(ref_clusters, matrix, process_types)
 
-    # --- (a) clustering estrutural, sem LLM ---
+    # (a) Structural clustering, no LLM
     structural = run_bsp(matrix, process_types=process_types)
     structural_metrics = compute_isa_metrics(structural.clusters, matrix, process_types)
     ri_structural, n_structural = pair_agreement(structural.clusters, ref_clusters, all_procs)
     ri_structural_ent, n_structural_ent = pair_agreement(structural.clusters, ref_clusters, all_ents, attr="entities")
 
-    # --- (b) 1ª iteração de princípios de EA (1 chamada LLM) ---
+    # (b) One round of EA principles (one LLM call), then re-cluster with the weights
     principles_path = SRC / "resources" / "ea_principles.txt"
     with open(principles_path, encoding="utf-8") as f:
         baseline = f.read()

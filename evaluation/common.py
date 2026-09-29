@@ -1,11 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-Código partilhado pelos Testes 2 e 3: leitura da matriz CRUD, dos tipos de
-processo e da clusterização de referência, e o Rand Index generalizado para
-membership múltiplo.
-
-Importar este módulo também acrescenta `src/` ao sys.path, para que
-`from utils.bsp import ...` funcione a partir de qualquer diretório.
+Shared code for Tests 2 and 3: loading the CRUD matrix, process types and
+reference clustering, and the Rand Index. Importing it also adds src/ to sys.path.
 """
 import re
 import sys
@@ -22,10 +18,12 @@ from utils.bsp import Cluster, _op_weight, _OP_PRIORITY
 LONG_FORMAT_COLS = {"process", "entity", "operation"}
 
 
+# Collapses whitespace in a name
 def norm(s):
     return re.sub(r"\s+", " ", str(s)).strip()
 
 
+# Reads a .csv or .xlsx as strings with trimmed column names
 def _clean_df(path):
     if str(path).lower().endswith((".xlsx", ".xls")):
         df = pd.read_excel(path, dtype=str)
@@ -35,19 +33,13 @@ def _clean_df(path):
     return df
 
 
+# True if the table has Process, Entity and Operation columns
 def _is_long_format(df):
     return LONG_FORMAT_COLS.issubset({c.strip().lower() for c in df.columns})
 
 
+# Reads a wide matrix (entities as columns, processes as rows), auto-detecting the header row
 def load_matrix_wide_excel(path):
-    """
-    Fallback for a wide CRUD matrix (entities as columns, processes as
-    rows) that doesn't already have Process/Entity/Operation columns --
-    matches the common EA-course layout: an "ENTITY"/"Entities" header
-    row, entity names one row below it, process names starting a few
-    columns in, values in the grid below. Auto-detects the header row and
-    the first entity column instead of hardcoding a fixed row/column index.
-    """
     raw = pd.read_excel(path, header=None)
     header_row = None
     for r in range(min(5, len(raw))):
@@ -68,8 +60,7 @@ def load_matrix_wide_excel(path):
     matrix = {}
     current_proc = None
     for _, row in raw.iloc[header_row + 1:].iterrows():
-        # process name lives in whichever column right before the first entity
-        # column has text on this row (handles a couple of nested label columns)
+        # The process name is the nearest non-empty cell left of the first entity column
         proc_cell = None
         for c in range(first_entity_col - 1, -1, -1):
             if pd.notna(row[c]):
@@ -90,6 +81,7 @@ def load_matrix_wide_excel(path):
     return matrix
 
 
+# Reads the CRUD matrix { process: { entity: ops } } from long format, or wide .xlsx as fallback
 def load_matrix(path):
     df = _clean_df(path)
     if _is_long_format(df):
@@ -112,11 +104,8 @@ def load_matrix(path):
     )
 
 
+# Reads Process,ProcessType; processes not listed default to atomic
 def load_process_types(path, all_procs):
-    """
-    Process,ProcessType (atomic/end_to_end) -- partial list is fine, any
-    process not mentioned defaults to "atomic". Empty path -> everyone atomic.
-    """
     process_types = {p: "atomic" for p in all_procs}
     if not path:
         return process_types
@@ -133,15 +122,8 @@ def load_process_types(path, all_procs):
     return process_types
 
 
+# Reads the reference clustering; a process listed under several Cluster IDs belongs to all of them
 def load_reference_clusters(path, matrix):
-    """
-    Agrupa diretamente por Cluster ID, linha a linha -- um processo com
-    linhas em Cluster IDs diferentes fica membro de todos esses clusters
-    (mesma semântica que o run_bsp já dá a um processo end_to_end que
-    escreve em entidades espalhadas por clusters diferentes). Linhas sem
-    Cluster ID são ignoradas, não geram um cluster "nan" nem apagam as
-    outras linhas desse processo.
-    """
     df = _clean_df(path)
     colmap = {c.strip().lower(): c for c in df.columns}
     cluster_key = next(
@@ -163,10 +145,7 @@ def load_reference_clusters(path, matrix):
         if not proc or proc.lower() == "nan":
             continue
         if pd.isna(cid_raw):
-            # Uma leitura solta sem cluster é normal (processo não alocado
-            # nessa relação). Uma ESCRITA sem cluster é suspeita -- toda
-            # escrita devia definir/pertencer a um cluster -- por isso só
-            # esta avisamos, não a leitura solta.
+            # A read without a cluster is normal; a write (C/U/D) without one is probably a mistake, so warn
             if has_operation_col and has_entity_col and pd.notna(row[colmap["operation"]]):
                 op = str(row[colmap["operation"]]).strip().upper()
                 if _op_weight(op) > _OP_PRIORITY["R"]:
@@ -177,10 +156,7 @@ def load_reference_clusters(path, matrix):
         if has_operation_col and pd.notna(row[colmap["operation"]]):
             op = str(row[colmap["operation"]]).strip().upper()
             is_write = _op_weight(op) > _OP_PRIORITY["R"]
-        # A plain READ doesn't make a process/entity a member of that
-        # cluster -- only a write (C/U/D) does, matching how run_bsp
-        # itself treats a pure-read touch (tracked separately as an
-        # "unallocated read", never as real cluster membership).
+        # Only writes (C/U/D) make a process/entity a member of a cluster, same rule as run_bsp
         if is_write:
             cluster_procs[cid].add(proc)
             if has_entity_col and pd.notna(row[colmap["entity"]]):
@@ -203,21 +179,8 @@ def load_reference_clusters(path, matrix):
     return clusters
 
 
+# Rand Index between two clusterings, on processes or entities (attr); a pair is 'together' if it shares any cluster
 def pair_agreement(clusters_a, clusters_b, all_items, attr="processes"):
-    """
-    Rand Index entre duas clusterizações, generalizado para membership
-    múltiplo -- um processo end_to_end (ou com override confirmado) pode
-    pertencer a mais que um cluster de cada lado, e o mesmo vale para uma
-    entidade que viva em mais que um cluster. "Mesmo cluster" para um par
-    (i, j) passa a significar "partilham pelo menos um cluster em comum".
-
-    attr="processes" (default) compara ao nível do processo -- a pergunta
-    "o BSP e a referência concordam em quais processos ficam juntos?".
-    attr="entities" compara ao nível da entidade -- "concordam em quais
-    dados ficam juntos?", que é arguivelmente mais direto, já que o BSP
-    agrupa entidades primeiro (Jaccard ponderado) e só depois deriva a
-    pertença dos processos a partir de quem escreve o quê.
-    """
     membership_a: dict[str, set] = defaultdict(set)
     for c in clusters_a:
         for item in getattr(c, attr):

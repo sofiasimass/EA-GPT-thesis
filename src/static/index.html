@@ -1136,14 +1136,7 @@ body {
 .hidden { display: none !important; }
 svg { display: block; }
 
-/* ────── Export the whole conversation (window.print → "Save as PDF") ──────
-   #screen-chat/.msgs are normally locked to the viewport height with their
-   own internal scrollbar; print needs the opposite — let the page grow to
-   fit every card, since a browser paginates a print naturally on its own.
-   Keeps the existing dark palette rather than forcing a light one — modern
-   "Save as PDF" dialogs default to including background colours (Chrome's
-   "background graphics" toggle), so this reads fine as-is; the reader can
-   turn that off in the print dialog if they'd rather save ink/toner. */
+/* ────── Print / "Save as PDF": let the chat grow to full height instead of scrolling ────── */
 @media print {
   #screen-chat { height: auto; }
   .msgs { overflow: visible; flex: none; height: auto; }
@@ -1643,13 +1636,7 @@ function appendProcessTypeReview(msg) {
   };
 }
 
-// Shown when a constraint's weight is strong enough to conflict with an atomic
-// process's forced write-co-location — e.g. the process creates two entities
-// that the constraint wants kept in separate systems. Nothing is ever applied
-// silently: each conflict is explained in plain language (no raw weight
-// numbers) and the architect decides per entity whether atomicity or the
-// constraint wins. One process can have several conflicting entities, shown
-// grouped together with one decision each.
+// Card asking the architect, per entity, whether atomicity or the constraint wins when they conflict
 function appendAtomicityOverrideConfirm(msg) {
   stopLoader();
   state.stage = 'override_review';
@@ -1708,9 +1695,7 @@ function appendAtomicityOverrideConfirm(msg) {
   };
 }
 
-// One chip per ISA metric for this clustering iteration, with a delta vs. the
-// previous iteration when one exists — all 5 metrics are higher-is-better (ideal 1.0),
-// so a green uptick is always an improvement and a red downtick always a regression.
+// One chip per ISA metric, with the change vs. the previous iteration (all metrics: higher is better)
 function buildIterationMetrics(metrics, prevMetrics) {
   const wrap = document.createElement('div');
   wrap.className = 'iter-metrics';
@@ -1762,10 +1747,7 @@ function appendClustering(msg) {
   }, msg.title));
   wrap.appendChild(head);
 
-  // If this clustering is the result of applying EA principles alone
-  // (the "structural draft → principles" step), attach an "i" button to
-  // the "Applying EA principles…" status row above so the architect can
-  // see exactly what changed, without cluttering the card itself.
+  // "i" button on the status row above, showing what the principles or the constraint changed
   if (msg.principles_detail) {
     attachDetailInfoButton('principles', 'What did the EA principles change?', () => openPrinciplesModal(msg.principles_detail));
   }
@@ -1773,9 +1755,7 @@ function appendClustering(msg) {
     attachDetailInfoButton(`constraint-${msg.iteration}`, 'What did this constraint change?', () => openConstraintModal(msg.constraint_detail));
   }
 
-  // ISA quality metrics for this iteration — lets the architect judge "am I satisfied?"
-  // with a quality signal instead of gut feel, and see immediately what an added
-  // constraint traded off (e.g. cohesion up, data-uniqueness down).
+  // ISA quality metrics for this iteration
   if (msg.metrics) {
     wrap.appendChild(buildIterationMetrics(msg.metrics, lastIterationMetrics));
     lastIterationMetrics = msg.metrics;
@@ -1800,9 +1780,7 @@ function appendClustering(msg) {
   });
   wrap.appendChild(chips);
 
-  // Leitores puros: processos sem nenhuma escrita nunca são membros de
-  // nenhum cluster (ver bsp.py), por isso não aparecem em nenhum chip
-  // acima — sem esta nota, desapareciam sem explicação nenhuma.
+  // Pure readers (no writes) belong to no cluster (see bsp.py), so list them here instead
   if (msg.unallocated_reads && Object.keys(msg.unallocated_reads).length) {
     const clusterName = {};
     msg.clusters.forEach(c => { clusterName[c.id] = c.name; });
@@ -1883,10 +1861,7 @@ function buildWeightList(weights) {
   }).join('');
 }
 
-// Attaches an "i" button to a status row identified by `marker` (set server-side
-// via the status message's own `marker` field) — used for both the one-off
-// "Applying EA principles…" row and each constraint iteration's own
-// "Analysing constraints…" row, one button per marker, never duplicated.
+// Adds an "i" button (once) to the status row with this marker
 function attachDetailInfoButton(marker, tooltip, onClick) {
   const markerRow = markerStatusRows[marker];
   const statusSpan = markerRow && markerRow.querySelector('.status-row > span');
@@ -2189,19 +2164,12 @@ function makeMatrixLoader(type) {
 // CRUD op text colors rendered on top of cluster background
 const OP_COLORS = { C: '#4ae296', R: '#60a5fa', U: '#fbbf24', D: '#f87171' };
 
-// A cell can hold combined ops like "CU" or "CRUD" (Matrix.add_entry merges
-// multiple operation records on the same process/entity pair). 'CRUD'.includes(val)
-// only works for single characters — it's a SUBSTRING check, and "CU" is not a
-// substring of "CRUD" (C is followed by R there, not U), so it silently fails for
-// any multi-char combination that isn't a contiguous run within "CRUD" itself.
+// True for any CRUD cell value, including combined ones like "CU"
 function isCrudValue(val) {
   return !!val && /^[CRUD]+$/.test(val);
 }
 
-// For a combined cell like "CU", OP_COLORS[val] is undefined (it's keyed by single
-// letters) and silently falls back to white. Pick the colour of whichever operation
-// in the cell has the highest priority instead — same C > U > D > R ordering bsp.py's
-// _OP_PRIORITY already uses to decide what a cell's "real" priority is.
+// Colour of the strongest operation in a cell (C > U > D > R, same as bsp.py)
 const CELL_OP_PRIORITY = { C: 4, U: 3, D: 2, R: 1 };
 function dominantOpColor(val) {
   let best = null, bestPriority = -1;
@@ -2223,15 +2191,7 @@ function slugify(str) {
   return str.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'export';
 }
 
-// PNG export draws the matrix straight onto a <canvas> from the same data
-// buildMatrixTable uses, instead of rasterizing the live DOM. Tried the usual
-// dependency-free "SVG <foreignObject> → Image → canvas" trick first, but
-// Chromium unconditionally taints any canvas drawn from an SVG image that
-// contains a foreignObject — canvas.toBlob()/toDataURL() then throws
-// SecurityError even for same-origin, no-external-resource content. That's
-// documented Chromium behaviour (not fixable via crossOrigin attributes or
-// CORS), so on Chrome/Edge the button did nothing. Drawing directly with the
-// Canvas 2D API sidesteps it entirely — no image is ever loaded.
+// PNG export: draws the matrix directly on a <canvas> (screenshotting the DOM fails in Chromium)
 const EXPORT_FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif";
 
 function exportWrapText(ctx, text, maxWidth) {
@@ -2433,9 +2393,7 @@ function downloadCanvasPng(canvas, filenameBase) {
   }, 'image/png');
 }
 
-// buildSpec: () => spec — called lazily on click, not up front, since some
-// callers (e.g. the clustered matrix) need computeClusterLayout re-derived
-// from the message rather than captured once at render time.
+// "Export PNG" button; buildSpec is called on click to get the matrix to draw
 function makeExportPngButton(buildSpec, filenameBase) {
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -2511,12 +2469,7 @@ function buildMatrixTable(processes, entities, data, procCluster, entCluster, sp
       const val = (data[e] && data[e][p]) ? String(data[e][p]).toUpperCase() : '';
       const eci = entCluster ? (entCluster[e] ?? -1) : -1;
       const inBlock = pci >= 0 && eci >= 0 && pci === eci;
-      // A cell outside the process's own cluster block, but still on this
-      // process's recorded process_span — a legitimate cross-system access
-      // (e.g. an atomic process that owns one cluster but still updates an
-      // entity that a confirmed override split into another cluster), not
-      // just a stray touch. Marked distinctly so it doesn't read the same
-      // as ordinary dimmed noise.
+      // Write outside the process's own cluster that is in its process_span (legitimate cross-system access)
       const isSpanAccess = !inBlock && isCrudValue(val)
         && spanIndices && spanIndices[p] && spanIndices[p].has(eci);
 
@@ -2530,9 +2483,7 @@ function buildMatrixTable(processes, entities, data, procCluster, entCluster, sp
           td.style.fontWeight = '700';
         }
       } else if (isSpanAccess) {
-        // Colour it like the cluster it's reaching into, not an unrelated
-        // accent colour — a lighter tint than inBlock's, since the process
-        // accesses this cluster but doesn't belong to it.
+        // Lighter tint of the cluster it reaches into
         const col = CLUSTER_COLORS[eci % CLUSTER_COLORS.length];
         td.dataset.cluster = eci;
         td.style.background = hexToRgba(col, 0.18);
@@ -2541,10 +2492,7 @@ function buildMatrixTable(processes, entities, data, procCluster, entCluster, sp
         td.style.fontWeight = '700';
         td.title = 'Cross-system access: this process reaches into another cluster (see process_span)';
       } else if (isCrudValue(val)) {
-        // op-C/op-R/op-U/op-D CSS classes only exist for single letters — a
-        // combined value like "CU" would match none of them and render
-        // unstyled, so set background/colour inline via the dominant op
-        // instead of relying on `op-${val}` matching a real class.
+        // Cell outside any cluster block: colour by its strongest operation
         td.textContent = val;
         td.style.color = dominantOpColor(val);
         td.style.background = hexToRgba(dominantOpColor(val), 0.18);
@@ -2612,8 +2560,6 @@ function sendAnswer(value, card) {
   state.ws.send(JSON.stringify({ type: 'answer', value }));
   state.stage = 'running';
 }
-
-// pickConstraint and sendCustomConstraint removed — constraint input now uses the main input bar
 
 // ───────────────────────── File upload ─────────────────────────
 function triggerUpload(kind) {
@@ -2776,7 +2722,7 @@ const METRIC_LEGEND = [
   { key: 'CPSMF',  label: 'Critical Process – System Mismatch Factor',         desc: 'Degree to which atomic (critical) and end-to-end (non-critical) processes are isolated in separate systems. Ideal = 1.0 — critical processes are never mixed with non-critical ones.' },
 ];
 
-// Shared by the standalone isa_metrics_comparison card and (formerly) the gap-analysis card.
+// As-Is vs. To-Be ISA metrics table
 function buildMetricsTable(asisMetrics, tobeMetrics) {
   const mwrap = document.createElement('div');
   mwrap.className = 'metrics-wrap';

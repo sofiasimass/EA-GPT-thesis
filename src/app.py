@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 import sys
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent))  # so `utils` imports work when run from src/
 
 from utils import Matrix
 from utils.generator import Generator
@@ -28,6 +28,7 @@ STATIC_DIR.mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
+# One browser connection: the WebSocket plus a queue for the user's answers
 class Session:
     def __init__(self, ws: WebSocket):
         self.ws = ws
@@ -38,6 +39,7 @@ class Session:
     async def send(self, msg: dict):
         await self.ws.send_json(msg)
 
+    # Waits for the next answer sent by the frontend
     async def wait(self) -> str:
         return await self.queue.get()
 
@@ -45,19 +47,15 @@ class Session:
 sessions: dict[str, Session] = {}
 
 
+# Decodes an uploaded CSV/TXT as UTF-8, falling back to Windows-1252 (Excel on Portuguese Windows)
 def _decode_uploaded_text(raw_bytes: bytes) -> str:
-    """
-    Decodes an uploaded CSV/TXT file, tolerating both UTF-8 and the
-    Windows-1252 encoding Excel/Notepad default to when saving on a
-    Portuguese Windows install — a plain .decode("utf-8") throws on
-    accented characters (e.g. "ç") saved that way.
-    """
     try:
         return raw_bytes.decode("utf-8-sig")
     except UnicodeDecodeError:
         return raw_bytes.decode("cp1252")
 
 
+# Converts a matrix DataFrame into the JSON shape the frontend expects
 def _matrix_payload(df: pd.DataFrame) -> dict:
     return {
         "processes": list(df.index),
@@ -66,16 +64,8 @@ def _matrix_payload(df: pd.DataFrame) -> dict:
     }
 
 
+# Saves each extracted matrix to src/resources/initial_matrices/ (same shape run_bsp expects)
 def _save_initial_matrix(mat: Matrix) -> None:
-    """
-    Saves the just-extracted matrix (mat.matrix + mat.process_types) into
-    src/resources/initial_matrices/, one file per run, so real matrices
-    accumulate there for testing bsp.py against (e.g. the adaptive
-    threshold) instead of only having synthetic ones.
-
-    Same shape run_bsp(matrix_data, process_types=...) expects, so loading
-    one back is just json.load(f)["matrix"] / ["process_types"].
-    """
     out_dir = Path(__file__).parent / "resources" / "initial_matrices"
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -92,6 +82,7 @@ def _save_initial_matrix(mat: Matrix) -> None:
     print(f"Initial matrix saved to {out_path}")
 
 
+# Full EA-GPT pipeline for one session: extraction -> review -> BSP + refinement -> analysis -> optional As-Is
 async def pipeline(session: Session):
     try:
         gen = Generator()
@@ -102,6 +93,7 @@ async def pipeline(session: Session):
             "loading": "matrix",
         })
 
+        # Extraction: LLM builds the CRUD matrix from the processes and context
         result, extraction_issues, extraction_attempts = await gen.extract(context=session.context, process_list=session.processes)
         data = result.model_dump()
 
@@ -116,8 +108,9 @@ async def pipeline(session: Session):
         if inferred:
             await session.send({"type": "constraints_found", "constraints": inferred})
 
+        # Build the matrix, dropping operations that reference an undefined entity
         mat = Matrix()
-        defined = {e["name"] for e in data.get("entities", [])}
+        defined ={e["name"] for e in data.get("entities", [])}
         skipped_ops = []
         for p in data.get("processes", []):
             mat.set_process_type(p["name"], p["process_type"])
@@ -170,6 +163,7 @@ async def pipeline(session: Session):
             "extraction_attempts": extraction_attempts,
         })
 
+        # Architect reviews and can override each process type (atomic / end_to_end)
         await session.send({
             "type": "process_type_review",
             "processes": [
@@ -191,6 +185,7 @@ async def pipeline(session: Session):
         principles_path = Path(__file__).parent / "resources" / "ea_principles.txt"
         baseline = principles_path.read_text(encoding="utf-8")
 
+        # Constraints and weights accumulate across iterations
         acc_constraints = ""
         acc_process_weights: dict = {}
         acc_process_reasoning: dict = {}
@@ -198,10 +193,7 @@ async def pipeline(session: Session):
         acc_entity_reasoning: dict = {}
         bsp_iterations: list = []
 
-        # 1. Rascunho estrutural, puramente pelos dados, sem princípios de
-        # EA nem constraints do arquiteto — mostrado ao vivo antes de
-        # qualquer influência externa, para o "antes" ficar visível, não
-        # escondido dentro de um passo interno.
+        # 1. Structural clustering from the data alone (no EA principles, no constraints), shown as the "before"
         await session.send({"type": "status", "message": "Running BSP clustering…", "loading": "bsp"})
         structural_draft = run_bsp(mat.matrix, process_types=mat.process_types)
         structural_metrics = compute_isa_metrics(structural_draft.clusters, mat.matrix, mat.process_types)
@@ -215,12 +207,7 @@ async def pipeline(session: Session):
             "unallocated_reads": structural_draft.unallocated_reads,
         })
 
-        # 2. Aplica os princípios de EA sozinhos (STEP 2 do bsp_prompt.txt,
-        # sem constraints do arquiteto — user_constraints="") sobre o
-        # rascunho estrutural, e volta a correr o BSP já com esses pesos.
-        # Isto é o que fica mostrado como "Initial BSP Clustering" — já
-        # não é neutro, já reflete os princípios, mas ainda nenhuma
-        # decisão do arquiteto.
+        # 2. EA principles only (no architect constraints yet) -> weights -> re-run BSP = "Initial BSP Clustering"
         await session.send({
             "type": "status", "message": "Applying EA principles to initial clustering…",
             "loading": "bsp", "marker": "principles",
@@ -239,8 +226,7 @@ async def pipeline(session: Session):
         initial_bsp = bsp
         iteration_metrics = compute_isa_metrics(bsp.clusters, mat.matrix, mat.process_types)
 
-        # O que os princípios mudaram, em relação ao rascunho estrutural —
-        # para o botão "i" na mensagem de status acima ter o que mostrar.
+        # What the principles changed vs. the structural clustering, shown in the "i" popup
         struct_names = {c.id: c.name for c in structural_draft.clusters}
         new_names = {c.id: c.name for c in bsp.clusters}
         principles_changes = classify_changes(structural_draft.clusters, bsp.clusters)
@@ -280,6 +266,7 @@ async def pipeline(session: Session):
         acc_override_history: list[dict] = []  # full audit trail — why each override was decided
         iteration = 0
 
+        # 3. Refinement loop: each constraint -> new weights -> re-run BSP, until the architect is satisfied
         while True:
             await session.send({
                 "type": "question",
@@ -300,9 +287,7 @@ async def pipeline(session: Session):
             iteration += 1
             acc_constraints += f"\n\n[Iteration {iteration}]:\n{constraint}"
 
-            # Snapshot the clusters this constraint is being applied on top of, so the
-            # "i" button on this iteration's status can show what it actually changed —
-            # same idea as principles_detail above, just for a user constraint instead.
+            # Clusters before this constraint, to show what it changed in the "i" popup
             prev_clusters = bsp.clusters
 
             await session.send({
@@ -323,8 +308,7 @@ async def pipeline(session: Session):
                 entity_weights=acc_entity_weights, entity_reasoning=acc_entity_reasoning,
             )
 
-            # Group unresolved conflicts by process — one process can have several
-            # conflicting entities, each gets its own row, but they're shown together.
+            # New atomicity conflicts, grouped by process, to ask the architect about
             new_by_process: dict = {}
             for pc in trial.pending_conflicts:
                 if pc.entity in acc_confirmed_overrides.get(pc.process, set()):
@@ -333,6 +317,7 @@ async def pipeline(session: Session):
                     continue  # already declined — don't ask again
                 new_by_process.setdefault(pc.process, []).append(pc)
 
+            # Ask the architect to confirm or decline each conflict, then re-run with the confirmed ones
             if new_by_process:
                 await session.send({
                     "type": "atomicity_override_confirm",
@@ -443,6 +428,7 @@ async def pipeline(session: Session):
                 "metrics": iteration_metrics,
             })
 
+        # Weight history as text, given to the LLM so it knows why the clusters look the way they do
         wrl = [
             f"{k[0]} ↔ {k[1]}: {acc_process_weights[k]:+.2f} — {acc_process_reasoning.get(k, '')}"
             for k in acc_process_reasoning
@@ -453,6 +439,7 @@ async def pipeline(session: Session):
         ]
         weight_history = "\n".join(wrl)
 
+        # 4. Systems analysis
         await session.send({
             "type": "status",
             "message": "Generating system descriptions and market comparisons…",
@@ -481,6 +468,7 @@ async def pipeline(session: Session):
             ],
         })
 
+        # 5. EA compliance
         await session.send({
             "type": "status",
             "message": "Evaluating EA principles compliance…",
@@ -503,6 +491,7 @@ async def pipeline(session: Session):
             ],
         })
 
+        # 6. Optional As-Is vs. To-Be comparison (exploratory, outside the thesis scope)
         tobe_metrics = compute_isa_metrics(bsp.clusters, mat.matrix, mat.process_types)
         comparison = None
         asis_metrics = None
@@ -555,15 +544,10 @@ async def pipeline(session: Session):
                     if not proc or not ent or not system:
                         parse_errors.append(f"row {i}: Process, Entity, and System are all required")
                         continue
-                    # No CUD/R distinction is collected in this format (see format_notes) --
-                    # every touch is treated as a write for NAIEF's purposes, since we can't
-                    # tell reads and writes apart from a process/entity/system triple alone.
+                    # The As-Is format has no CRUD letters, so every touch is treated as a write
                     as_is_matrix.setdefault(proc, {})[ent] = "C"
                     as_is_process_system[proc] = system
-                    # ProcessType is intrinsic to the process itself (does it span multiple
-                    # systems by nature?), not to which application currently runs it -- reuse
-                    # the classification the extraction already produced for this same process
-                    # rather than asking the user to redo it here.
+                    # Reuse the process type from the extraction (unknown processes default to atomic)
                     if proc in mat.process_types:
                         as_is_process_types[proc] = mat.process_types[proc]
                     else:
@@ -641,6 +625,7 @@ async def pipeline(session: Session):
                         ],
                     })
 
+        # Write the whole session to src/log.json
         log_data = {
             "extraction": data,
             "extraction_attempts": extraction_attempts,
@@ -747,11 +732,13 @@ async def pipeline(session: Session):
         await session.send({"type": "error", "message": str(e)})
 
 
+# Serves the frontend
 @app.get("/")
 async def root():
     return FileResponse(str(STATIC_DIR / "index.html"))
 
 
+# WebSocket: "start" reads the uploaded processes/context and launches the pipeline; "answer" feeds the queue
 @app.websocket("/ws/{sid}")
 async def ws_endpoint(websocket: WebSocket, sid: str):
     await websocket.accept()

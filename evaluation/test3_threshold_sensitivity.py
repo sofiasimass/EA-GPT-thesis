@@ -1,83 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-Teste 3 (genérico): mesma ideia do test2_bsp_vs_reference.py -- alimenta o bsp.py
-diretamente com uma matriz CRUD real, sem passar pela extração da LLM --
-mas em vez de aplicar princípios de EA, corre o clustering ESTRUTURAL
-puro várias vezes, uma por cada threshold de similaridade testado
-(incluindo o threshold adaptativo), e regista como o Rand Index contra a
-referência e as 4 métricas de qualidade ISA variam com o threshold.
+Test 3: sensitivity of the BSP density threshold. Runs the structural clustering
+(no LLM, fully deterministic) on a real CRUD matrix for thresholds from 0 to 1 in
+steps of 0.01, plus Lee's 0.5 and the adaptive threshold, and records the number of
+clusters, the ISA metrics and the Rand Index against a reference clustering.
 
-Os thresholds testados NÃO são números redondos escolhidos às cegas
-(ex. 0.2/0.5/0.7) -- a primeira versão deste script fazia isso e deu
-gráficos praticamente planos, porque esses valores caíam sempre no mesmo
-"vazio" entre duas similaridades reais da matriz, onde threshold nenhum
-muda o resultado. Uma segunda versão tentou adivinhar os pontos de
-transição a partir das similaridades brutas entre pares de entidades
-(bsp.py linha ~611, `_group_entities`), mas isso também não é garantido:
-a decisão de juntar uma entidade a um grupo compara-a com a MÉDIA de
-similaridade contra todo o grupo (`_average_linkage_group`, bsp.py linha
-~584, `if best_avg >= threshold`), não com um par isolado -- essa média
-pode cair num valor que não é nenhuma das similaridades brutas. Por
-isso, esta versão varre o threshold num grid fino e uniforme (0.01 em
-0.01, de 0.0 a 1.0) em vez de tentar adivinhar -- como não há LLM
-nenhuma envolvida, cada ponto corre em frações de segundo, por isso não
-há razão para arriscar perder uma transição real só para poupar tempo.
-Os valores de similaridade brutos continuam a ser impressos no ecrã, só
-como contexto informativo. 0.5 (Lee) e o threshold adaptativo entram
-sempre no sweep (mesmo que não caiam certinho no grid), marcados com uma
-linha vertical nos gráficos, para veres exatamente onde caem.
+Question: is 0.5 (Lee, 1999) also the threshold closest to the human reference and
+the one with the best ISA metrics? A fine grid is used because clusters only change
+at specific similarity values that are hard to predict in advance.
 
-Não há nenhuma chamada à LLM neste script -- é 100% determinístico, por
-isso corre cada threshold uma vez só (sem variação entre corridas).
-
-Motivação: run_bsp usa por omissão density_threshold=0.5, seguindo Lee
-(1999), que prova matematicamente que 0.5 maximiza a "net cohesion" e
-minimiza o "net coupling" tal como ELE os definiu -- uma otimização
-auto-referencial da própria matriz de similaridade, nunca validada
-contra uma referência externa e independente (o Lee não tinha nenhuma no
-seu exemplo). Este script testa exatamente isso: será que 0.5 é também o
-threshold que mais se aproxima do que um arquiteto humano (a referência)
-decidiu, e/ou o que dá a melhor arquitetura pelas métricas ISA? Por essa
-razão, a métrica de saída aqui é o Rand Index e as métricas ISA -- nunca
-a própria fórmula de cohesion/coupling do Lee, que estaria otimizada em
-0.5 por construção e não mostraria nada de novo.
-
-Ficheiros de input -- exatamente os mesmos do Teste 2:
-
-Ficheiro 1 -- matriz CRUD a enviar para o bsp.py:
-  .csv ou .xlsx com colunas Process, Entity, Operation (uma linha por
-  operação C/R/U/D). Se não tiver essas colunas e for .xlsx, tenta-se o
-  formato largo (entidades em colunas, processos em linhas) como
-  alternativa.
-
-Ficheiro 2 -- clusterização de referência, para comparar:
-  .csv ou .xlsx com colunas Process e Cluster ID. Um processo pode
-  aparecer em várias linhas com Cluster IDs diferentes -- fica membro de
-  todos esses clusters. Coluna Entity é opcional -- se vier no ficheiro,
-  as entidades de cada cluster vêm diretamente dela; senão são inferidas
-  da matriz do ficheiro 1.
-
-Ficheiro 3 (opcional) -- tipos de processo:
-  .csv ou .xlsx com colunas Process, ProcessType ("atomic" ou
-  "end_to_end"). Não precisa de listar todos os processos -- só os que
-  não são "atomic". Sem este ficheiro, CPSMF fica incorreto para
-  qualquer caso com processos end_to_end (fica tudo "atomic" por
-  omissão) -- para o DMHU (100% atomic) não faz diferença nenhuma, mas
-  para o ALMAFUMO faz, por isso convém dar sempre este ficheiro lá.
-
-Outputs:
-  - print no ecrã dos valores de similaridade descobertos, e de nº de
-    clusters, métricas ISA e Rand Index (processos e entidades) para
-    cada threshold testado.
-  - <pasta de saída>/teste3_resultados.csv -- a mesma tabela em bruto.
-  - <pasta de saída>/teste3_metricas_isa.png -- RSF/NAIEF/LCOISF/CPSMF
-    vs. threshold, em escada (drawstyle="steps-post", já que é
-    literalmente uma função em degraus do threshold), com 0.5 (Lee) e o
-    adaptativo marcados como linhas verticais.
-  - <pasta de saída>/teste3_rand_index.png -- Rand Index (processos e
-    entidades) vs. threshold, no mesmo estilo.
-  - <pasta de saída>/teste3_n_clusters.png -- nº de clusters vs.
-    threshold, para ajudar a explicar as escadas dos outros dois.
+Inputs are the same as Test 2. Outputs: teste3_resultados.csv and three charts
+(ISA metrics, Rand Index and number of clusters vs. threshold).
 """
 import sys
 import io
@@ -96,14 +29,8 @@ from utils.bsp import (
 )
 
 
+# Value of the adaptive threshold for this matrix, computed the same way run_bsp does
 def resolve_adaptive_threshold(matrix, adaptive_k=1.0, adaptive_min_pairs=5, fallback=0.5):
-    """Replica o cálculo interno do run_bsp para o adaptive_threshold, só
-    para conseguirmos reportar/plotar o valor numérico real que foi usado
-    (o BSPResult não o expõe). Nota: o run_bsp deriva este valor a partir
-    da distribuição de similaridade entre PROCESSOS (axis="row"), mesmo
-    que quem decide os clusters (_group_entities) use a similaridade
-    entre ENTIDADES (axis="col") -- replicamos aqui exatamente o que o
-    run_bsp faz internamente, não o que "faria mais sentido"."""
     df = pd.DataFrame(matrix).T
     reordered = _reorder_matrix(df)
     proc_scores = _pairwise_scores(
@@ -113,16 +40,8 @@ def resolve_adaptive_threshold(matrix, adaptive_k=1.0, adaptive_min_pairs=5, fal
     return derive_threshold(proc_scores, k=adaptive_k, min_pairs=adaptive_min_pairs, fallback=fallback)
 
 
+# Distinct raw entity-pair similarities (> 0), printed for context only
 def discover_entity_breakpoints(matrix):
-    """Os únicos thresholds onde a decisão de clustering PODE mudar são os
-    valores reais de similaridade ponderada entre pares de ENTIDADES
-    (axis="col") -- é esse eixo, não o de processos, que _group_entities
-    usa para decidir quem se junta (bsp.py linha ~611). Entre dois valores
-    distintos consecutivos, qualquer threshold dá exatamente o mesmo
-    resultado, por isso testar em pontos "redondos" como 0.2/0.5/0.7
-    arrisca cair sempre na mesma zona morta e não mostrar variação
-    nenhuma -- foi o que aconteceu na primeira versão deste script.
-    Devolve a lista ordenada de valores distintos >0."""
     df = pd.DataFrame(matrix).T
     reordered = _reorder_matrix(df)
     ent_scores = _pairwise_scores(
@@ -132,6 +51,7 @@ def discover_entity_breakpoints(matrix):
     return sorted(set(round(s, 6) for s in ent_scores if s > 0))
 
 
+# Runs the threshold sweep and writes the CSV and the three charts
 def main():
     print("=== Teste 3: sensibilidade do density_threshold do BSP (sem LLM) ===\n")
     matrix_path = input("Ficheiro da matriz CRUD (Process,Entity,Operation -- .csv ou .xlsx): ").strip().strip('"')
@@ -165,19 +85,10 @@ def main():
     print("(Só informativo -- o clustering real compara com a MÉDIA de um grupo inteiro, não com estes")
     print(" valores brutos isolados, por isso uma transição pode acontecer num ponto que não está nesta lista.)")
 
-    # Sweep: em vez de tentar adivinhar analiticamente onde estão as
-    # transições (o que a lista de breakpoints acima não garante, porque
-    # _average_linkage_group compara com a MÉDIA de similaridade contra um
-    # grupo inteiro, não com um par isolado -- essa média pode cair em
-    # valores que não são nenhuma das similaridades brutas), varremos o
-    # threshold num grid fino e uniforme. Como não há nenhuma chamada à
-    # LLM, cada ponto corre em frações de segundo, por isso não há razão
-    # para arriscar perder uma transição real só para poupar tempo.
-    # GRID_STEP mais pequeno = mais fino (mais preciso, mais lento).
+    # Fine uniform grid: grouping compares against group AVERAGES, so transitions can't be predicted exactly
     GRID_STEP = 0.01
     sweep = {round(i * GRID_STEP, 6) for i in range(int(1.0 / GRID_STEP) + 1)}
-    # garante que os pontos que realmente nos interessam comparar aparecem
-    # exatamente, não só o mais próximo do grid:
+    # Make sure Lee's 0.5 and the adaptive value are tested exactly
     sweep.add(0.5)
     sweep.add(round(adaptive_value, 6))
     sweep = sorted(t for t in sweep if 0.0 <= t <= 1.0)
@@ -206,11 +117,7 @@ def main():
         }
         rows.append(row)
 
-        # uma linha compacta por ponto -- não dá para imprimir 4 linhas
-        # por cada um dos ~100 pontos do grid e continuar legível. Marca
-        # com "<-- muda aqui" sempre que o nº de clusters muda face ao
-        # ponto anterior (é aí que está uma transição real), e com o
-        # nome (Lee/adaptive) nos dois pontos de referência.
+        # One line per threshold; mark where the number of clusters changes and the two reference points
         n_clusters = len(result.clusters)
         changed = " <-- muda aqui" if prev_n_clusters is not None and n_clusters != prev_n_clusters else ""
         tag = ""
@@ -223,8 +130,7 @@ def main():
               f"{changed}{tag}")
         prev_n_clusters = n_clusters
 
-    # também corre o adaptive_threshold=True "oficial" (deve bater certo
-    # com o ponto adaptive_value já incluído no sweep -- serve de confirmação)
+    # Sanity check: run_bsp(adaptive_threshold=True) should match the adaptive point of the sweep
     adaptive_result = run_bsp(matrix, process_types=process_types, adaptive_threshold=True)
     adaptive_metrics = compute_isa_metrics(adaptive_result.clusters, matrix, process_types)
     print(f"\nConfirmação -- run_bsp(adaptive_threshold=True) direto: "
@@ -235,7 +141,7 @@ def main():
     results_df.to_csv(csv_path, index=False)
     print(f"\nTabela guardada em: {csv_path}")
 
-    # --- estilo geral, para os 3 gráficos ---
+    # --- common chart style ---
     plt.style.use("seaborn-v0_8-whitegrid")
     plt.rcParams.update({
         "font.size": 11,
@@ -248,6 +154,7 @@ def main():
         "grid.linewidth": 0.7,
     })
 
+    # Common axis styling
     def style_ax(ax, ylabel, title):
         ax.set_xlabel("density threshold")
         ax.set_ylabel(ylabel)
@@ -259,21 +166,8 @@ def main():
         for spine in ("left", "bottom"):
             ax.spines[spine].set_color("#888888")
 
+    # Step line: thin continuous line plus bold plateaus, optional fill underneath
     def plot_series(ax, x, y, color, label=None, fill=False):
-        """Two layers, so the step shape reads as connected plateaus rather
-        than a stack of hard right-angle blocks, without changing the
-        underlying (accurate) step shape at all. Base layer: one single
-        continuous steps-post line, thin and semi-transparent, with a white
-        halo -- this is ONE unbroken path, so it never shows seams, even
-        where the real data has many transitions packed close together
-        (confirmed with a synthetic dense-oscillation stress test). Top
-        layer: a bold, full-colour reinforcement drawn only over each real
-        plateau (a run of constant y) -- no halo needed there, since the
-        base layer already provides it, so risers stay thin/faint and
-        plateaus stand out as bold connected shelves. fill=True adds a
-        soft skyline-style fill under the curve -- only safe to use when
-        this is the only series on the axes, otherwise overlapping fills
-        turn muddy."""
         x = np.asarray(x)
         y = np.asarray(y)
         if fill:
@@ -290,22 +184,16 @@ def main():
         handle, = ax.plot([], [], color=color, linewidth=3.0, label=label, solid_capstyle="round")
         return handle
 
+    # Vertical lines at Lee's 0.5 and at the adaptive threshold
     def add_reference_lines(ax):
-        """Vertical lines for 0.5 (Lee) and the adaptive threshold -- shown
-        in the legend like any other series, instead of rotated text
-        squeezed against the top of the plot."""
         h1 = ax.axvline(0.5, color="#9a9a9a", linestyle="--", linewidth=1.5,
                          label="Lee (0.5)", zorder=1)
         h2 = ax.axvline(adaptive_value, color="#3a3a3a", linestyle=":", linewidth=1.7,
                          label=f"adaptive ({adaptive_value:.3f})", zorder=1)
         return [h1, h2]
 
+    # Dot and value label where each series crosses the two reference lines
     def mark_intersections(ax, cols, colors, label_above, fmt="{:.3f}"):
-        """Marks, with a bold dot and a small value label, exactly where
-        each series sits at threshold=0.5 and at the adaptive threshold --
-        the two vertical reference lines. Alternates labels above/below
-        the point (per column) so they do not overlap each other when two
-        series happen to sit close together."""
         for x in (0.5, adaptive_value):
             row = results_df.iloc[(results_df["threshold"] - x).abs().argmin()]
             for i, (col, color) in enumerate(zip(cols, colors)):
@@ -325,13 +213,7 @@ def main():
         "n_clusters": "#7b3f9e",
     }
 
-    # --- chart 1: ISA quality metrics vs. threshold -- one small panel per
-    # metric, instead of 4 lines sharing one axes. With 4 step lines
-    # overlapping in a small region (0.0-0.2), a single combined axes gets
-    # visually busy and any fill turns the overlaps muddy; splitting each
-    # metric into its own panel lets every one of them read cleanly, with
-    # its own soft fill, while the shared x-axis still makes it easy to
-    # compare where each metric sits relative to the two reference lines.
+    # --- chart 1: ISA metrics vs. threshold, one panel per metric ---
     fig, axes = plt.subplots(2, 2, figsize=(9.5, 6.4), sharex=True)
     cols = ["RSF", "NAIEF", "LCOISF", "CPSMF"]
     for ax, col in zip(axes.flat, cols):
@@ -376,7 +258,7 @@ def main():
     plt.close(fig)
     print(f"Gráfico de Rand Index guardado em: {ri_png}")
 
-    # --- chart 3: number of clusters vs. threshold, to help explain the other two ---
+    # --- chart 3: number of clusters vs. threshold ---
     fig, ax = plt.subplots(figsize=(8.5, 5))
     plot_series(ax, results_df["threshold"], results_df["n_clusters"], palette["n_clusters"], fill=True)
     style_ax(ax, "number of clusters", "Number of clusters vs. threshold")
