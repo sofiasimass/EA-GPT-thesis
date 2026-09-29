@@ -66,7 +66,11 @@ src/
     generator.py         LLM calls (extraction, weights, systems analysis, compliance)
   resources/             Prompt templates and baseline EA principles
 tests/                   pytest suite for the deterministic BSP and ISA-metrics code
+evaluation/              scripts for the thesis evaluation (Tests 2 and 3)
 ```
+
+The scripts used in the thesis evaluation are in [evaluation/](evaluation/), which has its
+own README.
 
 ## Setup and running
 
