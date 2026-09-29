@@ -20,8 +20,8 @@ def _validate_extraction(data: dict, process_list: List[str]) -> List[str]:
     """
     Checks the extraction result against the hard rules stated in prompt.txt
     (completeness, entity count, orphan entities, entities never created,
-    dangling references, per-process density, and cross-process entity
-    sharing).
+    dangling references, per-process density, combined-cell depth,
+    cross-entity writes, and cross-process entity sharing).
     Returns a list of human-readable issue descriptions — empty if all checks pass.
     """
     issues = []
@@ -97,7 +97,7 @@ def _validate_extraction(data: dict, process_list: List[str]) -> List[str]:
     if processes_with_no_ops:
         issues.append(f"{len(processes_with_no_ops)} process(es) have zero operations and would vanish from the matrix: {sorted(processes_with_no_ops)[:10]}")
 
-    # Density: prompt.txt requires 4-6 CRUD entries per process. Too few gives BSP almost
+    # Density: prompt.txt requires 4-8 CRUD entries per process. Too few gives BSP almost
     # nothing to cluster on for that process; too many usually means padding with weak reads.
     #
     # Briefly disabled (2026-09-01) as a diagnostic experiment after tracing this floor to a
@@ -121,10 +121,10 @@ def _validate_extraction(data: dict, process_list: List[str]) -> List[str]:
             f"(density requirement): {too_sparse[:10]}"
         )
 
-    too_dense = sorted(p for p, n in op_counts.items() if n > 6)
+    too_dense = sorted(p for p, n in op_counts.items() if n > 8)
     if too_dense:
         issues.append(
-            f"{len(too_dense)} process(es) have more than the allowed 6 CRUD entries "
+            f"{len(too_dense)} process(es) have more than the allowed 8 CRUD entries "
             f"(density requirement): {too_dense[:10]}"
         )
 
@@ -149,6 +149,37 @@ def _validate_extraction(data: dict, process_list: List[str]) -> List[str]:
             "that plausibly own an entity's lifecycle (creating it, then later reading/updating/"
             "deleting that SAME record) and consolidate onto that one entity instead of spreading "
             "across several."
+        )
+
+    # A process that writes (C/U/D) to two DIFFERENT entities in its own transaction is the
+    # only extraction-level signal bsp.py's _group_entities ever gets for "these two entities
+    # belong together" that isn't diluted through a chain of shared reads (see prompt.txt's
+    # "Manage Client"/library worked examples, and its own checklist question: "Does this
+    # process's own transaction genuinely change a SECOND, different entity, not just its main
+    # one?"). That question is asked per process, one at a time — nothing checks the aggregate
+    # outcome. Confirmed live (2026-09-11): a real 62-process extraction, after 3 full retry
+    # attempts, ended with EVERY single writing process owning exactly one entity and reading
+    # the rest — zero processes anywhere with cross-entity writes — despite the prompt asking
+    # the question 62 times over. Flagged at the extraction level, not per process (a process
+    # that legitimately only ever touches one entity is normal and fine on its own), because
+    # zero anywhere across a real-sized extraction means entity clustering has to fall back
+    # entirely on shared-read similarity, which weighted-Jaccard treats as proportionally as
+    # strong as a shared write (R=1 vs C=4 is a ratio, not an absolute gap) — exactly the
+    # padding-driven false-merge failure mode traced earlier the same day (Training Course/
+    # Uniform at 0.94 similarity from padding reads alone).
+    cud_entities_by_process: dict[str, set] = {}
+    for op in data.get("operations", []):
+        if str(op.get("operation", "")).upper() in ("C", "U", "D"):
+            cud_entities_by_process.setdefault(op["process_name"], set()).add(op["entity_name"])
+    cross_entity_writers = sum(1 for ents in cud_entities_by_process.values() if len(ents) > 1)
+    if len(output_names) >= 5 and cross_entity_writers == 0:
+        issues.append(
+            "no process anywhere creates/updates/deletes more than one entity — every writing "
+            "process owns exactly one entity and only reads the rest, so entity clustering has "
+            "no direct write-based evidence that any two entities belong together. Revisit "
+            "processes whose own transaction plausibly changes a second record as a side effect "
+            "(e.g. closing something out while freeing/updating what it depended on) and record "
+            "that second change as a real C/U/D, not a plain READ."
         )
 
     # Entities are supposed to be SHARED data objects (prompt.txt's ENTITIES section) — one

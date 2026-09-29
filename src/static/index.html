@@ -2750,9 +2750,9 @@ function autoResize(el) {
 // ───────────────────────── As-Is upload ─────────────────────────
 function appendAsIsUpload(msg) {
   state.stage = 'as_is_upload';
-  const format = (msg && msg.format) || 'Process,Entity,Operation,System,ProcessType';
+  const format = (msg && msg.format) || 'Process,Entity,System';
   const notes = (msg && msg.format_notes) ||
-    'One row per CRUD entry in your current landscape\'s own CRUD matrix — independent vocabulary, does not need to match the proposed architecture.';
+    'One row per (process, information it touches, current application) in your current landscape — process names should match the proposed architecture\'s own process list.';
   const card = document.createElement('div');
   card.className = 'asis-upload-card';
   card.id = 'as-is-upload-card';

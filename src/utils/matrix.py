@@ -59,10 +59,10 @@ class ConstraintSchema(BaseModel):
 class MatrixResult(BaseModel):
     """
     A high-density BSP CRUD matrix.
-    DENSITY RULE: every process in the operation list must appear 4 to 6 times
-    (i.e. touch 4 to 6 entities). If a process has fewer than 4 operations,
+    DENSITY RULE: every process in the operation list must appear 4 to 8 times
+    (i.e. touch 4 to 8 entities). If a process has fewer than 4 operations,
     add more READ entries for reference data it must consult (catalogues, profiles,
-    prior records, approval logs). If a process has more than 6, drop the weakest READs.
+    prior records, approval logs). If a process has more than 8, drop the weakest READs.
     ENTITY RULE: entity count should scale with the process list, roughly one entity
     per 4-6 processes — not a fixed count. Merge granular or overlapping entities into
     broader shared objects before finalising.

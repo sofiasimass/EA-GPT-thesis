@@ -734,11 +734,11 @@ def decide(process: str, entity: str, ctx: DecisionContext) -> Decision:
     Grad, B., "Decision Tables in Systems Design," Session 19, Digest of
     Technical Papers, 1962 ACM National Conference, pp. 76-77.
 
-    Nota: process_types.get(process, "atomic") == "atomic" é a mesma
-    condição literal que já existia antes — "ambiguous" NÃO cai aqui,
-    mesmo o docstring do módulo dizendo que é tratado como atómico. É uma
-    inconsistência que já existia no código original; fica por resolver
-    noutra altura, não é para corrigir silenciosamente nesta reestruturação.
+    Nota: "ambiguous" conta como atómico aqui, tal como o docstring do
+    módulo já prometia — process_types.get(process, "atomic") em
+    ("atomic", "ambiguous"), não uma igualdade literal a "atomic". Isto
+    alinha com _is_critical() em compute_isa_metrics, que já tratava
+    "ambiguous" como crítico/atómico para efeitos do CPSMF.
     """
     if entity in ctx.confirmed_overrides.get(process, set()):
         return Decision(
@@ -747,7 +747,7 @@ def decide(process: str, entity: str, ctx: DecisionContext) -> Decision:
             score=0.0, threshold=ctx.threshold,
         )
 
-    if not ctx.ignore_atomicity and ctx.process_types.get(process, "atomic") == "atomic":
+    if not ctx.ignore_atomicity and ctx.process_types.get(process, "atomic") in ("atomic", "ambiguous"):
         return Decision(
             subject=process, entity=entity, action="force_merge",
             reasoning=f"{process} é atómico e escreve em {entity} — têm de ficar no mesmo sistema",
@@ -775,7 +775,8 @@ def _enforce_atomicity(
     threshold: float,
 ) -> tuple[List[List[str]], List[Decision]]:
     """
-    Aplica a regra de co-localização: um processo atómico obriga todas as
+    Aplica a regra de co-localização: um processo atómico (ou "ambiguous",
+    tratado como atómico por omissão — ver decide()) obriga todas as
     entidades que ele escreve (C/U/D) a ficarem no mesmo grupo. Usa
     union-find porque as junções em cascata (A+B, depois B+C) têm de ser
     tratadas corretamente.
@@ -790,7 +791,7 @@ def _enforce_atomicity(
     decisions: List[Decision] = []
 
     for proc in df.index:
-        if process_types.get(proc, "atomic") != "atomic":
+        if process_types.get(proc, "atomic") not in ("atomic", "ambiguous"):
             continue
 
         touched = [e for e in entities if _op_weight(df.at[proc, e]) > _OP_PRIORITY["R"]]

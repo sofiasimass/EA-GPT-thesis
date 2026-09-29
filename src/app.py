@@ -518,12 +518,17 @@ async def pipeline(session: Session):
         if ans in ("yes", "y", "Yes — upload my current landscape"):
             await session.send({
                 "type": "upload_as_is",
-                "format": "Process,Entity,Operation,System,ProcessType",
+                "format": "Process,Entity,System",
                 "format_notes": (
-                    "One row per CRUD entry in your CURRENT landscape's own CRUD matrix — independent "
-                    "process/entity vocabulary, does not need to match the proposed architecture. "
-                    "Operation is one of C/R/U/D. System is the current application/system that process "
-                    "belongs to. ProcessType is one of atomic/end_to_end/ambiguous."
+                    "One row per (process, information/entity it touches, current application). "
+                    "A real current landscape rarely has its own CRUD-level matrix — most "
+                    "organisations can say which application supports which process and roughly "
+                    "what information it touches, not the exact Create/Read/Update/Delete "
+                    "breakdown, so this format doesn't ask for it. Process must match a name from "
+                    "the proposed architecture's own process list (its process type is reused from "
+                    "there); Entity is free text describing the information that process/application "
+                    "touches — it does not need to match the proposed architecture's entity "
+                    "vocabulary. System is the current application/system that process belongs to."
                 ),
             })
             raw_csv = await session.wait()
@@ -534,6 +539,7 @@ async def pipeline(session: Session):
                 as_is_process_system: dict = {}
                 as_is_process_types: dict = {}
                 parse_errors = []
+                unknown_processes = set()
 
                 rows = list(csv.reader(io.StringIO(content)))
                 if rows and rows[0] and rows[0][0].strip().lower() == "process":
@@ -542,27 +548,44 @@ async def pipeline(session: Session):
                 for i, row in enumerate(rows, start=1):
                     if not row or not row[0].strip():
                         continue
-                    if len(row) < 5:
-                        parse_errors.append(f"row {i}: expected 5 columns (Process,Entity,Operation,System,ProcessType), got {len(row)}")
+                    if len(row) < 3:
+                        parse_errors.append(f"row {i}: expected 3 columns (Process,Entity,System), got {len(row)}")
                         continue
-                    proc, ent, op, system, ptype = (c.strip() for c in row[:5])
-                    if not proc or not ent or not op or not system:
-                        parse_errors.append(f"row {i}: Process, Entity, Operation, and System are all required")
+                    proc, ent, system = (c.strip() for c in row[:3])
+                    if not proc or not ent or not system:
+                        parse_errors.append(f"row {i}: Process, Entity, and System are all required")
                         continue
-                    if ptype not in ("atomic", "end_to_end", "ambiguous"):
-                        parse_errors.append(f"row {i}: ProcessType '{ptype}' for '{proc}' must be one of atomic/end_to_end/ambiguous")
-                        continue
-                    as_is_matrix.setdefault(proc, {})[ent] = op.upper()
+                    # No CUD/R distinction is collected in this format (see format_notes) --
+                    # every touch is treated as a write for NAIEF's purposes, since we can't
+                    # tell reads and writes apart from a process/entity/system triple alone.
+                    as_is_matrix.setdefault(proc, {})[ent] = "C"
                     as_is_process_system[proc] = system
-                    as_is_process_types[proc] = ptype
+                    # ProcessType is intrinsic to the process itself (does it span multiple
+                    # systems by nature?), not to which application currently runs it -- reuse
+                    # the classification the extraction already produced for this same process
+                    # rather than asking the user to redo it here.
+                    if proc in mat.process_types:
+                        as_is_process_types[proc] = mat.process_types[proc]
+                    else:
+                        unknown_processes.add(proc)
+                        as_is_process_types[proc] = "atomic"
+
+                if unknown_processes:
+                    await session.send({
+                        "type": "status",
+                        "message": (
+                            "Note: process name(s) not found in the proposed architecture's own "
+                            "process list, so their ProcessType defaulted to atomic: "
+                            + ", ".join(sorted(unknown_processes)[:20])
+                        ),
+                    })
 
                 if parse_errors or not as_is_matrix:
                     await session.send({
                         "type": "error",
                         "message": (
                             "As-Is CSV could not be parsed — skipping the comparison. Expected columns: "
-                            "Process,Entity,Operation,System,ProcessType (ProcessType one of "
-                            "atomic/end_to_end/ambiguous). Issues:\n" + "\n".join(parse_errors[:20])
+                            "Process,Entity,System. Issues:\n" + "\n".join(parse_errors[:20])
                         ),
                     })
                 else:

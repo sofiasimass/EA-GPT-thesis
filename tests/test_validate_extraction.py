@@ -19,17 +19,17 @@ def _minimal(processes, entities, operations):
 def test_density_flags_processes_with_too_few_or_too_many_entries():
     data = _minimal(
         ["Sparse", "JustRight", "Dense"],
-        [f"E{i}" for i in range(1, 8)],
+        [f"E{i}" for i in range(1, 10)],
         [
             {"process_name": "Sparse", "entity_name": "E1", "operation": "C"},
             *[{"process_name": "JustRight", "entity_name": f"E{i}", "operation": "C"} for i in range(1, 5)],
-            *[{"process_name": "Dense", "entity_name": f"E{i}", "operation": "C"} for i in range(1, 8)],
+            *[{"process_name": "Dense", "entity_name": f"E{i}", "operation": "C"} for i in range(1, 10)],
         ],
     )
     issues = _validate_extraction(data, ["Sparse", "JustRight", "Dense"])
 
     assert any("Sparse" in i and "fewer than the required 4" in i for i in issues)
-    assert any("Dense" in i and "more than the allowed 6" in i for i in issues)
+    assert any("Dense" in i and "more than the allowed 8" in i for i in issues)
     assert not any("JustRight" in i and "CRUD entries" in i for i in issues)
 
 
@@ -87,3 +87,39 @@ def test_zero_operations_flags_a_process_that_vanishes():
     issues = _validate_extraction(data, ["Ghost", "Real"])
 
     assert any("Ghost" in i and "zero operations" in i for i in issues)
+
+
+def test_no_cross_entity_writers_is_flagged():
+    """
+    Real gap found live (2026-09-11): a 62-process extraction had every
+    writing process own exactly one entity and only read the rest -- zero
+    cross-entity writes anywhere, despite prompt.txt asking per process
+    whether "this process's own transaction genuinely changes a SECOND,
+    different entity". Nothing previously checked the aggregate outcome of
+    that question, so it went unenforced for the whole extraction.
+    """
+    processes = [f"P{i}" for i in range(5)]
+    entities = [f"E{i}" for i in range(5)]
+    # each process CUDs its own single entity, only reads the next one --
+    # no process ever writes two different entities.
+    ops = []
+    for i in range(5):
+        ops.append({"process_name": f"P{i}", "entity_name": f"E{i}", "operation": "C"})
+        ops.append({"process_name": f"P{i}", "entity_name": f"E{(i + 1) % 5}", "operation": "R"})
+
+    issues = _validate_extraction(_minimal(processes, entities, ops), processes)
+
+    assert any("no process anywhere creates/updates/deletes more than one entity" in i for i in issues)
+
+
+def test_one_cross_entity_writer_is_enough_to_clear_the_check():
+    processes = [f"P{i}" for i in range(5)]
+    entities = [f"E{i}" for i in range(5)]
+    ops = [{"process_name": f"P{i}", "entity_name": f"E{i}", "operation": "C"} for i in range(5)]
+    # P0's own transaction also updates a second, different entity (E1) --
+    # the one real cross-entity write the check is looking for.
+    ops.append({"process_name": "P0", "entity_name": "E1", "operation": "U"})
+
+    issues = _validate_extraction(_minimal(processes, entities, ops), processes)
+
+    assert not any("creates/updates/deletes more than one entity" in i for i in issues)
