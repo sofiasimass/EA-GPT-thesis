@@ -777,13 +777,13 @@ def compute_isa_metrics(
     def _is_critical(p: str) -> bool:
         return process_types.get(p, "atomic") in ("atomic", "ambiguous")
 
-    mismatch = 0
+    mismatched = set()
     for c in clusters:
         has_critical = any(_is_critical(p) for p in c.processes)
         has_noncritical = any(not _is_critical(p) for p in c.processes)
         if has_critical and has_noncritical:
-            mismatch += len(c.processes)
-    cpsmf = 1.0 - (mismatch / len(all_procs)) if all_procs else 1.0
+            mismatched.update(c.processes)
+    cpsmf = 1.0 - (len(mismatched) / len(all_procs)) if all_procs else 1.0
 
     return {
         "RSF":    round(rsf,    3),
