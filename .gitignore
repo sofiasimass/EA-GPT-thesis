@@ -16,3 +16,6 @@ src/resources/as_is_example.csv
 src/resources/atomic_bp.csv
 src/resources/e2e_bp.csv
 src/resources/mixed_bp.csv
+
+# APQC framework is copyrighted (personal use only): kept locally, not published
+evaluation/apqc/
